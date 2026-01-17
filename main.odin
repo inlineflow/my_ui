@@ -26,6 +26,7 @@ UI_Window :: struct {
   size: v2,
   rd: ^UI_Rect_Render_Data,
   color: v3,
+  active_color: v3,
   state: bit_set[UI_Element_State],
   handle: struct {
     size: v2,
@@ -43,6 +44,7 @@ UI_Element_State :: enum {
   DRAGGED,
   DROPPED,
   RESIZING,
+  ACTIVE,
 }
 
 UI_Button :: struct {
@@ -132,7 +134,8 @@ button :: proc(b: UI_Button) -> bool {
 }
 
 draw_window :: proc(w: UI_Window) -> bool {
-  ui_draw_rect(w.pos, w.size, w.rd^, w.color)
+  color := .ACTIVE in w.state ? w.active_color : w.color;
+  ui_draw_rect(w.pos, w.size, w.rd^, color)
   for b in w.buttons {
     ui_draw_rect(w.pos + b.pos, b.size, b.rd^, b.color)
   }
@@ -178,8 +181,9 @@ main :: proc() {
     pos = root_os_window.size / 2 - {800, 600} / 2,
     size = {800, 600},
     color = {0.8, 0.8, 0.8},
+    active_color = {0.7, 0.7, 0.7},
     rd = &ui_rect_rd,
-    buttons = { b },
+    // buttons = { b },
     handle = { size = { 800, 25 } },
   }
 
@@ -205,35 +209,38 @@ main :: proc() {
         }
 
       case .MOUSEMOTION:
-        fmt.println(event.motion.x, event.motion.y)
+        // fmt.println(event.motion.x, event.motion.y)
         // editor_window.color = {cast(f32)event.motion.x / editor_window.size.x, cast(f32)event.motion.y / editor_window.size.y, 1}
         m := v2{cast(f32)event.motion.x, cast(f32)event.motion.y}
         rel := v2{cast(f32)event.motion.xrel, cast(f32)event.motion.yrel}
         w := &editor_window
-        if m.x > w.pos.x && m.x < w.pos.x + w.size.x && m.y > w.pos.y && m.y < w.pos.y + w.size.y {
-            fmt.println("in window by x and y")
-        }
-        fmt.println(event.motion)
+        // if m.x > w.pos.x && m.x < w.pos.x + w.size.x && m.y > w.pos.y && m.y < w.pos.y + w.size.y {
+        //     fmt.println("in window by x and y")
+        // }
+        // fmt.println(event.motion)
 
         if .DRAGGED in w.state {
           w.pos += rel
         }
       case .MOUSEBUTTONDOWN:
-        fmt.println(event.button.x, event.button.y)
+        // fmt.println(event.button.x, event.button.y)
         click := v2{cast(f32)event.button.x, cast(f32)event.button.y}
         // w_pos := editor_window.pos
         // w := editor_window
-        // if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y && click.y < w.pos.y + w.size.y {
-        //     fmt.println("in window by x and y")
-        // }
-
 
         w := &editor_window
         h := editor_window.handle
+        if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y + h.size.y && click.y < w.pos.y + w.size.y {
+            fmt.println("in window by x and y")
+            w.state += { .ACTIVE }
+        } else {
+            w.state -= { .ACTIVE }
+        }
         if click.x > w.pos.x && click.x < w.pos.x + h.size.x && click.y > w.pos.y && click.y < w.pos.y + h.size.y {
           fmt.println("we're in handle by x and y")
           w.state += { .DRAGGED, .CLICKED }
         }
+
       case .MOUSEBUTTONUP:
         editor_window.state -= { .DRAGGED, .CLICKED }
 
@@ -258,7 +265,7 @@ main :: proc() {
     // button(b)
 
     draw_window(editor_window)
-    fmt.println(editor_window.state)
+    // fmt.println(editor_window.state)
     sdl.GL_SwapWindow(window)
     // fmt.println(projection)
   }
