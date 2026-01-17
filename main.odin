@@ -7,6 +7,7 @@ import lin "core:math/linalg"
 import "core:fmt"
 import "core:os"
 import "core:strings"
+import ft "shared:freetype"
 
 v2 :: [2]f32
 v3 :: [3]f32
@@ -32,6 +33,11 @@ UI_Window :: struct {
     size: v2,
   },
   buttons: []UI_Button,
+}
+
+UI_Editor_Window :: struct {
+  using window: UI_Window,
+  cursor_pos: u32,
 }
 
 OS_Window :: struct {
@@ -143,11 +149,16 @@ draw_window :: proc(w: UI_Window) -> bool {
   return true
 }
 
+draw_editor :: proc(e: UI_Editor_Window) -> bool {
+  draw_window(e)
+  cursor_size := v2{8, 16}
+  ui_draw_rect({e.pos.x + cast(f32)e.cursor_pos, e.pos.y + e.handle.size.y}, cursor_size, e.rd^, {1, 1, 1})
+  return true
+}
+
 
 main :: proc() {
-
   sdl.Init({.TIMER, .VIDEO})
-
   window := sdl.CreateWindow("SDL2", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, START_WINDOW_WIDTH, START_WINDOW_HEIGHT, {.OPENGL, .RESIZABLE} )
   if window == nil {
     fmt.eprintln("Failed to create window")
@@ -160,6 +171,17 @@ main :: proc() {
   gl.load_up_to(3, 3, sdl.gl_set_proc_address)
   gl.Viewport(0, 0, START_WINDOW_WIDTH, START_WINDOW_HEIGHT)
 
+  ftlib: ft.Library
+  ft_err := ft.init_free_type(&ftlib)
+  assert(ft_err == .Ok)
+
+  ft_face: ft.Face
+  ft_err = ft.new_face(ftlib, "fonts/FiraMonoNerdFontMono-Regular.otf", 0, &ft_face)
+  assert(ft_err == .Ok)
+
+  ft.set_pixel_sizes(ft_face, 0, 48)
+
+  // fmt.println(ft_face)
 
   ui_rect_rd, ui_rect_rd_ok := ui_setup_rect_rd("shaders/default.vert", "shaders/default.frag")
   assert(ui_rect_rd_ok)
@@ -177,7 +199,7 @@ main :: proc() {
     color = {1, 1, 1},
   }
 
-  editor_window := UI_Window{
+  editor_window := UI_Editor_Window{
     pos = root_os_window.size / 2 - {800, 600} / 2,
     size = {800, 600},
     color = {0.8, 0.8, 0.8},
@@ -264,7 +286,7 @@ main :: proc() {
     // ui_draw_rect({200, 200}, {200, 200}, ui_rect_rd, {1, 1, 1})
     // button(b)
 
-    draw_window(editor_window)
+    draw_editor(editor_window)
     // fmt.println(editor_window.state)
     sdl.GL_SwapWindow(window)
     // fmt.println(projection)
