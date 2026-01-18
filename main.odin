@@ -38,6 +38,10 @@ UI_Window :: struct {
 UI_Editor_Window :: struct {
   using window: UI_Window,
   cursor_pos: u32,
+  text: string,
+  ft_face: ft.Face,
+  glyphs: map[rune]UI_Glyph,
+  font_rd: UI_Rect_Render_Data,
 }
 
 OS_Window :: struct {
@@ -241,6 +245,7 @@ draw_window :: proc(w: UI_Window) -> bool {
 
 draw_editor :: proc(e: UI_Editor_Window, draw_cursor: bool) -> bool {
   draw_window(e)
+  render_text(e.font_rd, e.ft_face, e.glyphs, e.text, e.pos.x, e.pos.y + e.handle.size.y, 1, {1, 1, 1})
   cursor_size := v2{2, 19}
   if .ACTIVE in e.state && draw_cursor {
     ui_draw_rect({e.pos.x + cast(f32)e.cursor_pos, e.pos.y + e.handle.size.y}, cursor_size, e.rd^, {1, 1, 1})
@@ -352,6 +357,10 @@ main :: proc() {
     rd = &ui_rect_rd,
     // buttons = { b },
     handle = { size = { 800, 25 } },
+    glyphs = glyphs,
+    text = "hello world",
+    ft_face = ft_face,
+    font_rd = font_rd,
   }
 
   acc:f32
@@ -436,7 +445,7 @@ main :: proc() {
     // button(b)
     threshhold:f32 = 0.8
     draw_editor(editor_window, acc >= threshhold)
-    render_text(font_rd, ft_face, glyphs, "hello world", editor_window.pos.x, editor_window.pos.y + editor_window.handle.size.y, 1, {1, 1, 1})
+    // render_text(font_rd, ft_face, glyphs, , editor_window.pos.x, editor_window.pos.y + editor_window.handle.size.y, 1, {1, 1, 1})
     if acc >= threshhold * 2 {
       acc = 0
     }
