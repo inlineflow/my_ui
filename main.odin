@@ -8,6 +8,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import ft "shared:freetype"
+import "core:unicode/utf8"
 
 v2 :: [2]f32
 v3 :: [3]f32
@@ -38,7 +39,8 @@ UI_Window :: struct {
 UI_Editor_Window :: struct {
   using window: UI_Window,
   cursor_pos: u32,
-  text: string,
+  // text: string,
+  text_buf: [dynamic]rune,
   ft_face: ft.Face,
   glyphs: map[rune]UI_Glyph,
   font_rd: UI_Rect_Render_Data,
@@ -245,7 +247,8 @@ draw_window :: proc(w: UI_Window) -> bool {
 
 draw_editor :: proc(e: UI_Editor_Window, draw_cursor: bool) -> bool {
   draw_window(e)
-  render_text(e.font_rd, e.ft_face, e.glyphs, e.text, e.pos.x, e.pos.y + e.handle.size.y, 1, {1, 1, 1})
+  text := utf8.runes_to_string(e.text_buf[:])
+  render_text(e.font_rd, e.ft_face, e.glyphs, text, e.pos.x, e.pos.y + e.handle.size.y, 1, {1, 1, 1})
   cursor_size := v2{2, 19}
   if .ACTIVE in e.state && draw_cursor {
     ui_draw_rect({e.pos.x + cast(f32)e.cursor_pos, e.pos.y + e.handle.size.y}, cursor_size, e.rd^, {1, 1, 1})
@@ -349,6 +352,10 @@ main :: proc() {
     color = {1, 1, 1},
   }
 
+  // editor_text_buf := make([dynamic]rune)
+  // for c in "hello world" {
+  //   append(&editor_text_buf, c)
+  // }
   editor_window := UI_Editor_Window{
     pos = root_os_window.size / 2 - {800, 600} / 2,
     size = {800, 600},
@@ -358,9 +365,14 @@ main :: proc() {
     // buttons = { b },
     handle = { size = { 800, 25 } },
     glyphs = glyphs,
-    text = "hello world",
+    // text = "hello world",
+    text_buf = make([dynamic]rune),
     ft_face = ft_face,
     font_rd = font_rd,
+  }
+
+  for c in "hello world" {
+    append(&editor_window.text_buf, c)
   }
 
   acc:f32
@@ -385,6 +397,9 @@ main :: proc() {
         #partial switch event.key.keysym.sym {
         case .ESCAPE:
           break main_loop
+        case .A..<.Z:
+          fmt.println(event.key.keysym.sym)
+          append(&editor_window.text_buf, rune(event.key.keysym.sym))
         }
 
       case .MOUSEMOTION:
