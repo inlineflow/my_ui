@@ -38,12 +38,13 @@ UI_Window :: struct {
 
 UI_Editor_Window :: struct {
   using window: UI_Window,
-  cursor_pos: u32,
-  // text: string,
-  text_buf: [dynamic]rune,
-  ft_face: ft.Face,
-  glyphs: map[rune]UI_Glyph,
-  font_rd: UI_Rect_Render_Data,
+  editor: Editor,
+  // cursor_pos: u32,
+  // // text: string,
+  // text_buf: [dynamic]rune,
+  // ft_face: ft.Face,
+  // glyphs: map[rune]Glyph,
+  // font_rd: UI_Rect_Render_Data,
 }
 
 OS_Window :: struct {
@@ -67,12 +68,6 @@ UI_Button :: struct {
   color: v3,
 }
 
-UI_Glyph :: struct {
-  texture_id: u32,
-  size: [2]u32,
-  bearing: [2]i32,
-  advance: u32,
-}
 
 FONT_SIZE :: 16
 
@@ -118,7 +113,7 @@ setup_font_quad :: proc(vertex_filepath, fragment_filepath: string) -> (rd: UI_R
   }, true
 }
 
-render_text :: proc(rd: UI_Rect_Render_Data, face: ft.Face, glyphs: map[rune]UI_Glyph, text: string, x, y, scale: f32, color: v3) {
+render_text :: proc(rd: UI_Rect_Render_Data, face: ft.Face, glyphs: map[rune]Glyph, text: string, x, y, scale: f32, color: v3) {
   gl.UseProgram(rd.shader_id)
   gl.Uniform3f(rd.uniforms["text_color"].location, color.x, color.y, color.z)
   gl.UniformMatrix4fv(rd.uniforms["projection"].location, 1, false, &projection[0][0])
@@ -245,19 +240,28 @@ draw_window :: proc(w: UI_Window) -> bool {
   return true
 }
 
-draw_editor :: proc(e: UI_Editor_Window, draw_cursor: bool) -> bool {
+draw_editor :: proc(e: UI_Editor_Window, os_window: OS_Window, draw_cursor: bool) -> bool {
   draw_window(e)
-  text := utf8.runes_to_string(e.text_buf[:])
-  render_text(e.font_rd, e.ft_face, e.glyphs, text, e.pos.x, e.pos.y + e.handle.size.y, 1, {1, 1, 1})
+  // text := utf8.runes_to_string(e.text_buf[:])
+  lines := e.editor.lines
+  gl.Scissor(cast(i32)e.pos.x, cast(i32)e.pos.y, cast(i32)e.size.x, cast(i32)e.size.y)
+  for line, line_index in lines {
+    text := utf8.runes_to_string(line.text[:])
+    y_offset := cast(u32)line_index * e.editor.line_height_px
+    render_text(e.editor.font_rd, e.editor.face, e.editor.glyphs, text, e.pos.x , e.pos.y + e.handle.size.y + cast(f32)y_offset, 1, {1, 1, 1})
+  }
+
   cursor_size := v2{2, 19}
   if .ACTIVE in e.state && draw_cursor {
-    ui_draw_rect({e.pos.x + cast(f32)e.cursor_pos, e.pos.y + e.handle.size.y}, cursor_size, e.rd^, {1, 1, 1})
+    ui_draw_rect({e.pos.x + cast(f32)e.editor.cursor_pos.x * cast(f32)e.editor.max_advance_px, e.pos.y + e.handle.size.y + cast(f32)(e.editor.line_height_px * e.editor.cursor_pos.y)}, cursor_size, e.rd^, {1, 1, 1})
   }
+
+  gl.Scissor(0, 0, cast(i32)os_window.size.x, cast(i32)os_window.size.y)
   return true
 }
 
-make_glyphs :: proc(face: ft.Face) -> map[rune]UI_Glyph {
-  result := make(map[rune]UI_Glyph)
+make_glyphs :: proc(face: ft.Face) -> map[rune]Glyph {
+  result := make(map[rune]Glyph)
   gl.PixelStorei(gl.UNPACK_ALIGNMENT, 1)
 
   for i in 0..<128 {
@@ -286,7 +290,7 @@ make_glyphs :: proc(face: ft.Face) -> map[rune]UI_Glyph {
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
     gl.TexParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    glyph := UI_Glyph{
+    glyph := Glyph{
       texture,
       {face.glyph.bitmap.width, face.glyph.bitmap.rows},
       {face.glyph.bitmap_left, face.glyph.bitmap_top},
@@ -314,6 +318,8 @@ main :: proc() {
   gl.Viewport(0, 0, START_WINDOW_WIDTH, START_WINDOW_HEIGHT)
   gl.Enable(gl.BLEND)
   gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+  gl.Enable(gl.SCISSOR_TEST)
+  gl.Scissor(0, 0, START_WINDOW_WIDTH, START_WINDOW_HEIGHT)
 
   ftlib: ft.Library
   ft_err := ft.init_free_type(&ftlib)
@@ -327,9 +333,14 @@ main :: proc() {
   ft.set_pixel_sizes(ft_face, 0, FONT_SIZE)
 
   line_height := cast(f32)(ft_face.size.metrics.height >> 6)
-  fmt.println("line_height: ", line_height)
-  fmt.println("face: ", ft_face)
-  fmt.println("face.size.metrics: ", ft_face.size.metrics)
+  // fmt.println("line_height: ", line_height)
+  // fmt.println("face: ", ft_face)
+  // fmt.println("face.size.metrics: ", ft_face.size.metrics)
+
+  fmt.printfln("face: %#v", ft_face)
+  fmt.printfln("face.size: %#v", ft_face.size)
+  fmt.printfln("face.size.metrics: %#v", ft_face.size.metrics)
+  line_height_px := cast(u32)((ft_face.size.metrics.ascender - ft_face.size.metrics.descender) >> 6)
 
   glyphs := make_glyphs(ft_face)
   font_rd, font_rd_ok := setup_font_quad("shaders/font.vert", "shaders/font.frag")
@@ -356,6 +367,7 @@ main :: proc() {
   // for c in "hello world" {
   //   append(&editor_text_buf, c)
   // }
+  max_advance_px := cast(u32)(ft_face.size.metrics.max_advance >> 6)
   editor_window := UI_Editor_Window{
     pos = root_os_window.size / 2 - {800, 600} / 2,
     size = {800, 600},
@@ -364,15 +376,26 @@ main :: proc() {
     rd = &ui_rect_rd,
     // buttons = { b },
     handle = { size = { 800, 25 } },
-    glyphs = glyphs,
-    // text = "hello world",
-    text_buf = make([dynamic]rune),
-    ft_face = ft_face,
-    font_rd = font_rd,
+    editor = Editor {
+      glyphs = glyphs,
+      // text = "hello world",
+      lines = make([dynamic]Line),
+      face = ft_face,
+      font_rd = font_rd,
+      line_height_px = line_height_px,
+      max_advance_px = max_advance_px,
+    }
   }
 
+  l := Line {
+    text = make([dynamic]rune),
+  }
+
+  append(&editor_window.editor.lines, l)
+
   for c in "hello world" {
-    append(&editor_window.text_buf, c)
+    push_char(&editor_window.editor, c)
+    // append(&editor_window.editor.lines[0].text, c)
   }
 
   acc:f32
@@ -399,19 +422,19 @@ main :: proc() {
           break main_loop
         case .A..<.Z:
           fmt.println(event.key.keysym.sym)
-          append(&editor_window.text_buf, rune(event.key.keysym.sym))
+          push_char(&editor_window.editor, rune(event.key.keysym.sym))
+          // append(&editor_window.text_buf, rune(event.key.keysym.sym))
+        case .DOWN:
+          fmt.println("down")
+        case .RIGHT:
+          fmt.println("right")
+          editor_window.editor.cursor_pos.x += 1
         }
 
       case .MOUSEMOTION:
-        // fmt.println(event.motion.x, event.motion.y)
-        // editor_window.color = {cast(f32)event.motion.x / editor_window.size.x, cast(f32)event.motion.y / editor_window.size.y, 1}
         m := v2{cast(f32)event.motion.x, cast(f32)event.motion.y}
         rel := v2{cast(f32)event.motion.xrel, cast(f32)event.motion.yrel}
         w := &editor_window
-        // if m.x > w.pos.x && m.x < w.pos.x + w.size.x && m.y > w.pos.y && m.y < w.pos.y + w.size.y {
-        //     fmt.println("in window by x and y")
-        // }
-        // fmt.println(event.motion)
 
         if .DRAGGED in w.state {
           w.pos += rel
@@ -426,6 +449,7 @@ main :: proc() {
         h := editor_window.handle
         if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y + h.size.y && click.y < w.pos.y + w.size.y {
             fmt.println("in window by x and y")
+            fmt.println(editor_window.editor.cursor_pos)
             w.state += { .ACTIVE }
         } else {
             w.state -= { .ACTIVE }
@@ -450,6 +474,7 @@ main :: proc() {
           projection = glm.mat4Ortho3d(0, cast(f32)width, cast(f32)height, 0, -1, 1)
           // font_projection = glm.mat4Ortho3d(0, cast(f32)width, 0, cast(f32)height, -1, 1)
           gl.Viewport(0, 0, width, height)
+          root_os_window = { { cast(f32)width, cast(f32)height } }
       }
     }
 
@@ -459,7 +484,7 @@ main :: proc() {
     // ui_draw_rect({200, 200}, {200, 200}, ui_rect_rd, {1, 1, 1})
     // button(b)
     threshhold:f32 = 0.8
-    draw_editor(editor_window, acc >= threshhold)
+    draw_editor(editor_window, root_os_window, acc >= threshhold)
     // render_text(font_rd, ft_face, glyphs, , editor_window.pos.x, editor_window.pos.y + editor_window.handle.size.y, 1, {1, 1, 1})
     if acc >= threshhold * 2 {
       acc = 0
