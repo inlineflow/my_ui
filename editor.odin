@@ -11,8 +11,6 @@ Glyph :: struct {
 
 Line :: struct {
   text: [dynamic]rune,
-  width_px: u32,
-  height_px: u32,
 }
 
 Editor :: struct {

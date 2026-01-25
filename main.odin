@@ -429,6 +429,13 @@ main :: proc() {
         case .RIGHT:
           fmt.println("right")
           editor_window.editor.cursor_pos.x += 1
+        case .RETURN:
+          l := Line {
+            text = make([dynamic]rune),
+          }
+          append(&editor_window.editor.lines, l)
+          editor_window.editor.cursor_pos.y += 1
+          editor_window.editor.cursor_pos.x = 0
         }
 
       case .MOUSEMOTION:
