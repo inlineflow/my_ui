@@ -19,12 +19,33 @@ Cmd_Type :: enum {
 
 Cmd_List :: bit_set[Cmd_Type]
 
+Mouse_Button :: enum {
+  Left = 1,
+  Middle,
+  Right,
+}
+
+Mouse_Button_State :: enum {
+  None,
+  Up,
+  Down,
+}
+
+Mouse_Click :: struct {
+  // button: Mouse_Button,
+  pos: [2]i32,
+  state: Mouse_Button_State,
+}
+
+Mouse_Input_Data :: struct {
+    pos: [2]i32,
+    rel: [2]i32,
+    clicks: [Mouse_Button]Mouse_Click,
+  }
+
 Input_Data :: struct {
   text: string,
-  mouse: [2]i32,
-  mouse_rel: [2]i32,
-  // m := v2{cast(f32)event.motion.x, cast(f32)event.motion.y}
-  // rel := v2{cast(f32)event.motion.xrel, cast(f32)event.motion.yrel}
+  mouse: Mouse_Input_Data,
 }
 
 // Cmd_Editor :: enum {
@@ -64,25 +85,52 @@ handle_input :: proc(event: ^sdl.Event, state:^Game_State,  cmd_list: ^Cmd_List)
           cmd_list^ += {.Global_Pause}
           state^ += {.Global_Paused}
       }
+      // TODO: fix this shit
       #partial switch event.key.keysym.scancode {
         case .UP:
-          cmd_list^ += { .Editor_Cursor_Up }
+          if .Editor_Active in state^ {
+            cmd_list^ += { .Editor_Cursor_Up }
+          }
         case .RIGHT:
-          cmd_list^ += { .Editor_Cursor_Right }
+          if .Editor_Active in state^ {
+            cmd_list^ += { .Editor_Cursor_Right }
+          }
         case .DOWN:
-          cmd_list^ += { .Editor_Cursor_Down }
+          if .Editor_Active in state^ {
+            cmd_list^ += { .Editor_Cursor_Down }
+          }
         case .LEFT:
-          cmd_list^ += { .Editor_Cursor_Left }
+          if .Editor_Active in state^ {
+            cmd_list^ += { .Editor_Cursor_Left }
+          }
         case .RETURN:
-          cmd_list^ += { .Editor_Newline }
+          if .Editor_Active in state^ {
+            cmd_list^ += { .Editor_Newline }
+          }
       }
     }
 
-  case .MOUSEMOTION:
+    case .MOUSEMOTION:
       m := [2]i32{ event.motion.x, event.motion.y }
       rel := [2]i32{ event.motion.xrel, event.motion.yrel }
-      res.mouse = m
-      res.mouse_rel = rel
+      res.mouse.pos = m
+      res.mouse.rel = rel
+
+    case .MOUSEBUTTONDOWN:
+      click := [2]i32{ event.button.x, event.button.y }
+      b := cast(Mouse_Button)event.button.button
+      res.mouse.clicks[b] = {
+        pos = click,
+        state = .Down,
+      }
+
+    case .MOUSEBUTTONUP:
+      click := [2]i32{ event.button.x, event.button.y }
+      b := cast(Mouse_Button)event.button.button
+      res.mouse.clicks[b] = {
+        pos = click,
+        state = .Up,
+      }
 
     case .TEXTINPUT:
       if .Editor_Active in state^ {
