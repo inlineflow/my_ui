@@ -76,6 +76,9 @@ Game_State_Type :: enum {
 
 Game_State :: bit_set[Game_State_Type]
 
+// TODO: clean up the api
+// this proc probably shouldn't update the state of the game, just read it
+// handle_input :: proc(event: ^sdl.Event, state: Game_State) -> (Cmd_List, Input_Data)
 handle_input :: proc(event: ^sdl.Event, state:^Game_State,  cmd_list: ^Cmd_List) -> Input_Data {
   res: Input_Data
   #partial switch event.type {
