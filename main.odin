@@ -9,6 +9,7 @@ import "core:os"
 import "core:strings"
 import ft "shared:freetype"
 import "core:unicode/utf8"
+import sa "core:container/small_array"
 
 v2 :: [2]f32
 v3 :: [3]f32
@@ -399,6 +400,9 @@ main :: proc() {
   }
 
   acc:f32
+
+  events: sa.Small_Array(64, sdl.Event)
+  gstate := Game_State{ .Editor_Active }
   main_loop: for {
 
     now = sdl.GetPerformanceCounter()
@@ -406,91 +410,112 @@ main :: proc() {
     dt = cast(f32)(cast(f64)elapsed_ticks / cast(f64)freq) // in seconds
     last = now
 
-
-    // fmt.println(acc)
-
     event: sdl.Event
+    // events2 := make([dynamic]sdl.Event, 100)
     for sdl.PollEvent(&event) {
-      #partial switch event.type {
-      // case .KEYDOWN: 
-      //   fallthrough
-      // case .KEYUP:
-
-      case .KEYDOWN:
-        #partial switch event.key.keysym.sym {
-        case .ESCAPE:
-          break main_loop
-        case .A..<.Z:
-          // fmt.println(event.key.keysym.sym)
-          push_char(&editor_window.editor, rune(event.key.keysym.sym))
-          // append(&editor_window.text_buf, rune(event.key.keysym.sym))
-        case .DOWN:
-          fmt.println("down")
-          editor_window.editor.cursor_pos.y += 1
-        case .UP:
-          fmt.println("up")
-          editor_window.editor.cursor_pos.y -= 1
-        case .RIGHT:
-          fmt.println("right")
-          editor_window.editor.cursor_pos.x += 1
-        case .LEFT:
-          fmt.println("left")
-          editor_window.editor.cursor_pos.x -= 1
-        case .RETURN:
-          l := Line {
-            text = make([dynamic]rune),
-          }
-          append(&editor_window.editor.lines, l)
-          editor_window.editor.cursor_pos.y += 1
-          editor_window.editor.cursor_pos.x = 0
-        }
-
-      case .MOUSEMOTION:
-        m := v2{cast(f32)event.motion.x, cast(f32)event.motion.y}
-        rel := v2{cast(f32)event.motion.xrel, cast(f32)event.motion.yrel}
-        w := &editor_window
-
-        if .DRAGGED in w.state {
-          w.pos += rel
-        }
-      case .MOUSEBUTTONDOWN:
-        // fmt.println(event.button.x, event.button.y)
-        click := v2{cast(f32)event.button.x, cast(f32)event.button.y}
-        // w_pos := editor_window.pos
-        // w := editor_window
-
-        w := &editor_window
-        h := editor_window.handle
-        if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y + h.size.y && click.y < w.pos.y + w.size.y {
-            fmt.println("in window by x and y")
-            fmt.println(editor_window.editor.cursor_pos)
-            w.state += { .ACTIVE }
-        } else {
-            w.state -= { .ACTIVE }
-        }
-        if click.x > w.pos.x && click.x < w.pos.x + h.size.x && click.y > w.pos.y && click.y < w.pos.y + h.size.y {
-          fmt.println("we're in handle by x and y")
-          w.state += { .DRAGGED, .CLICKED }
-        }
-
-      case .MOUSEBUTTONUP:
-        editor_window.state -= { .DRAGGED, .CLICKED }
-
-      case .QUIT: 
-        break main_loop
-      case .WINDOWEVENT:
-          width: i32
-          height: i32
-
-          sdl.GL_GetDrawableSize(window, &width, &height)
-          // game.width = width
-          // game.height = height
-          projection = glm.mat4Ortho3d(0, cast(f32)width, cast(f32)height, 0, -1, 1)
-          // font_projection = glm.mat4Ortho3d(0, cast(f32)width, 0, cast(f32)height, -1, 1)
-          gl.Viewport(0, 0, width, height)
-          root_os_window = { { cast(f32)width, cast(f32)height } }
-      }
+      sa.push(&events, event)
     }
+
+    cmd_list, input_data := handle_input(sa.slice(&events), gstate)
+    // UI 
+    if .Global_Pause in cmd_list {
+      break main_loop
+    }
+      // append(&events2, event)
+
+      // #partial switch event.type {
+      // // case .KEYDOWN: 
+      // //   fallthrough
+      // // case .KEYUP:
+      //
+      // case .KEYDOWN:
+      //   #partial switch event.key.keysym.sym {
+      //   case .ESCAPE:
+      //     break main_loop
+      //   case .A..<.Z:
+      //     // fmt.println(event.key.keysym.sym)
+      //     push_char(&editor_window.editor, rune(event.key.keysym.sym))
+      //     // append(&editor_window.text_buf, rune(event.key.keysym.sym))
+      //   case .DOWN:
+      //     fmt.println("down")
+      //     editor_window.editor.cursor_pos.y += 1
+      //   case .UP:
+      //     fmt.println("up")
+      //     editor_window.editor.cursor_pos.y -= 1
+      //   case .RIGHT:
+      //     fmt.println("right")
+      //     editor_window.editor.cursor_pos.x += 1
+      //   case .LEFT:
+      //     fmt.println("left")
+      //     editor_window.editor.cursor_pos.x -= 1
+      //   case .RETURN:
+      //     l := Line {
+      //       text = make([dynamic]rune),
+      //     }
+      //     append(&editor_window.editor.lines, l)
+      //     editor_window.editor.cursor_pos.y += 1
+      //     editor_window.editor.cursor_pos.x = 0
+      //   }
+      //
+      // // case .MOUSEMOTION:
+      // //   m := v2{cast(f32)event.motion.x, cast(f32)event.motion.y}
+      // //   rel := v2{cast(f32)event.motion.xrel, cast(f32)event.motion.yrel}
+      // //   w := &editor_window
+      // //
+      // //   if .DRAGGED in w.state {
+      // //     w.pos += rel
+      // //   }
+      // // case .MOUSEBUTTONDOWN:
+      // //   // fmt.println(event.button.x, event.button.y)
+      // //   click := v2{cast(f32)event.button.x, cast(f32)event.button.y}
+      // //   // w_pos := editor_window.pos
+      // //   // w := editor_window
+      // //
+      // //   w := &editor_window
+      // //   h := editor_window.handle
+      // //   if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y + h.size.y && click.y < w.pos.y + w.size.y {
+      // //       fmt.println("in window by x and y")
+      // //       fmt.println(editor_window.editor.cursor_pos)
+      // //       w.state += { .ACTIVE }
+      // //   } else {
+      // //       w.state -= { .ACTIVE }
+      // //   }
+      // //   if click.x > w.pos.x && click.x < w.pos.x + h.size.x && click.y > w.pos.y && click.y < w.pos.y + h.size.y {
+      // //     fmt.println("we're in handle by x and y")
+      // //     w.state += { .DRAGGED, .CLICKED }
+      // //   }
+      // //
+      // // case .MOUSEBUTTONUP:
+      // //   editor_window.state -= { .DRAGGED, .CLICKED }
+      // //
+      // case .QUIT: 
+      //   break main_loop
+      // case .WINDOWEVENT:
+      //     width: i32
+      //     height: i32
+      //
+      //     sdl.GL_GetDrawableSize(window, &width, &height)
+      //     // game.width = width
+      //     // game.height = height
+      //     projection = glm.mat4Ortho3d(0, cast(f32)width, cast(f32)height, 0, -1, 1)
+      //     // font_projection = glm.mat4Ortho3d(0, cast(f32)width, 0, cast(f32)height, -1, 1)
+      //     gl.Viewport(0, 0, width, height)
+      //     root_os_window = { { cast(f32)width, cast(f32)height } }
+      // }
+    // }
+
+    fmt.printfln("%#v", events)
+    sa.clear(&events)
+    // for e in sa.slice(&events) {
+    //   fmt.print(e.type)
+    //   fmt.print(" ")
+    // }
+    // fmt.println()
+
+    // for e in events2 {
+    //   fmt.print(e.type)
+    //   fmt.print(" ")
+    // }
 
     gl.ClearColor(1.0, 0.8039, 0.7882, 1.0) // FFCDC9
     gl.Clear(gl.COLOR_BUFFER_BIT)

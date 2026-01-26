@@ -79,71 +79,73 @@ Game_State :: bit_set[Game_State_Type]
 // TODO: clean up the api
 // this proc probably shouldn't update the state of the game, just read it
 // handle_input :: proc(event: ^sdl.Event, state: Game_State) -> (Cmd_List, Input_Data)
-handle_input :: proc(event: ^sdl.Event, state:^Game_State,  cmd_list: ^Cmd_List) -> Input_Data {
-  res: Input_Data
-  #partial switch event.type {
-    case .KEYDOWN: {
-      #partial switch event.key.keysym.sym {
-        case .ESCAPE:
-          cmd_list^ += {.Global_Pause}
-          state^ += {.Global_Paused}
+// handle_input :: proc(event: ^sdl.Event, state:^Game_State,  cmd_list: ^Cmd_List) -> Input_Data {
+handle_input :: proc(events: []sdl.Event, state:Game_State) -> (cmd_list: Cmd_List, res: Input_Data) {
+  for &event in events {
+    #partial switch event.type {
+      case .KEYDOWN: {
+        #partial switch event.key.keysym.sym {
+          case .ESCAPE:
+            cmd_list += {.Global_Pause}
+            // state^ += {.Global_Paused}
+        }
+        // TODO: fix this shit
+        #partial switch event.key.keysym.scancode {
+          case .UP:
+            if .Editor_Active in state {
+              cmd_list += { .Editor_Cursor_Up }
+            }
+          case .RIGHT:
+            if .Editor_Active in state {
+              cmd_list += { .Editor_Cursor_Right }
+            }
+          case .DOWN:
+            if .Editor_Active in state {
+              cmd_list += { .Editor_Cursor_Down }
+            }
+          case .LEFT:
+            if .Editor_Active in state {
+              cmd_list += { .Editor_Cursor_Left }
+            }
+          case .RETURN:
+            if .Editor_Active in state {
+              cmd_list += { .Editor_Newline }
+            }
+        }
       }
-      // TODO: fix this shit
-      #partial switch event.key.keysym.scancode {
-        case .UP:
-          if .Editor_Active in state^ {
-            cmd_list^ += { .Editor_Cursor_Up }
-          }
-        case .RIGHT:
-          if .Editor_Active in state^ {
-            cmd_list^ += { .Editor_Cursor_Right }
-          }
-        case .DOWN:
-          if .Editor_Active in state^ {
-            cmd_list^ += { .Editor_Cursor_Down }
-          }
-        case .LEFT:
-          if .Editor_Active in state^ {
-            cmd_list^ += { .Editor_Cursor_Left }
-          }
-        case .RETURN:
-          if .Editor_Active in state^ {
-            cmd_list^ += { .Editor_Newline }
-          }
-      }
+
+      case .MOUSEMOTION:
+        m := [2]i32{ event.motion.x, event.motion.y }
+        rel := [2]i32{ event.motion.xrel, event.motion.yrel }
+        res.mouse.pos = m
+        res.mouse.rel = rel
+
+      case .MOUSEBUTTONDOWN:
+        click := [2]i32{ event.button.x, event.button.y }
+        b := cast(Mouse_Button)event.button.button
+        res.mouse.clicks[b] = {
+          pos = click,
+          state = .Down,
+        }
+
+      case .MOUSEBUTTONUP:
+        click := [2]i32{ event.button.x, event.button.y }
+        b := cast(Mouse_Button)event.button.button
+        res.mouse.clicks[b] = {
+          pos = click,
+          state = .Up,
+        }
+
+      case .TEXTINPUT:
+        if .Editor_Active in state {
+          fmt.println(event)
+          cs := cstring(raw_data(&event.text.text))
+          res.text = strings.clone_from_cstring(cs)
+        }
     }
-
-    case .MOUSEMOTION:
-      m := [2]i32{ event.motion.x, event.motion.y }
-      rel := [2]i32{ event.motion.xrel, event.motion.yrel }
-      res.mouse.pos = m
-      res.mouse.rel = rel
-
-    case .MOUSEBUTTONDOWN:
-      click := [2]i32{ event.button.x, event.button.y }
-      b := cast(Mouse_Button)event.button.button
-      res.mouse.clicks[b] = {
-        pos = click,
-        state = .Down,
-      }
-
-    case .MOUSEBUTTONUP:
-      click := [2]i32{ event.button.x, event.button.y }
-      b := cast(Mouse_Button)event.button.button
-      res.mouse.clicks[b] = {
-        pos = click,
-        state = .Up,
-      }
-
-    case .TEXTINPUT:
-      if .Editor_Active in state^ {
-        fmt.println(event)
-        cs := cstring(raw_data(&event.text.text))
-        res.text = strings.clone_from_cstring(cs)
-      }
   }
 
-  return res
+  return cmd_list, res
 }
 
 // handle_input :: proc(event: sdl.Event) {
