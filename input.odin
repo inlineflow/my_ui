@@ -154,12 +154,12 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type) -> (cmd_list: 
 
 ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
   click := input_data.mouse.clicks[Mouse_Button.Left]
-  if click.state == .Down {
-    for w in ui.windows {
-      if w == nil {
-        continue
-      }
+  for w in ui.windows {
+    if w == nil {
+      continue
+    }
 
+    if click.state == .Down {
       h := w.handle
       if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + w.size.x && cast(f32)click.pos.y > w.pos.y + h.size.y && cast(f32)click.pos.y < w.pos.y + w.size.y {
           fmt.println("in window by x and y")
@@ -173,7 +173,16 @@ ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
         w.state += { .DRAGGED, .CLICKED }
       }
     }
+
+    if click.state == .Up {
+      w.state -= { .DRAGGED }
+    }
+
+    if .DRAGGED in w.state {
+        w.pos += [2]f32 { cast(f32)input_data.mouse.rel.x, cast(f32)input_data.mouse.rel.y }
+    }
   }
+
       // // case .MOUSEBUTTONDOWN:
       // //   // fmt.println(event.button.x, event.button.y)
       // //   click := v2{cast(f32)event.button.x, cast(f32)event.button.y}
