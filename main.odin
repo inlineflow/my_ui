@@ -24,6 +24,7 @@ UI_Rect_Render_Data :: struct {
   uniforms: gl.Uniforms,
 }
 
+
 UI_Window :: struct {
   pos: v2,
   size: v2,
@@ -40,12 +41,11 @@ UI_Window :: struct {
 UI_Editor_Window :: struct {
   using window: UI_Window,
   editor: Editor,
-  // cursor_pos: u32,
-  // // text: string,
-  // text_buf: [dynamic]rune,
-  // ft_face: ft.Face,
-  // glyphs: map[rune]Glyph,
-  // font_rd: UI_Rect_Render_Data,
+}
+
+UI_Any_Window :: union {
+  ^UI_Window,
+  ^UI_Editor_Window,
 }
 
 OS_Window :: struct {
@@ -69,6 +69,10 @@ UI_Button :: struct {
   color: v3,
 }
 
+MAX_WINDOWS :: 8
+UI_Data :: struct {
+  windows: [MAX_WINDOWS]^UI_Window,
+}
 
 FONT_SIZE :: 16
 
@@ -399,10 +403,18 @@ main :: proc() {
     // append(&editor_window.editor.lines[0].text, c)
   }
 
+  // windows := [MAX_WINDOWS]UI_Window {
+  //   0 = &editor_window,
+  // }
+  // windows[0] = &editor_window
   acc:f32
-
+  ui_data := UI_Data {
+    windows = [MAX_WINDOWS]^UI_Window {
+      0 = &editor_window,
+    },
+  }
   events: sa.Small_Array(64, sdl.Event)
-  gstate := Game_State{ .Editor_Active }
+  gstate := Game_State.Editor_Active
   main_loop: for {
 
     now = sdl.GetPerformanceCounter()
@@ -416,11 +428,14 @@ main :: proc() {
       sa.push(&events, event)
     }
 
-    cmd_list, input_data := handle_input(sa.slice(&events), gstate)
+    cmds, input_data := process_input(sa.slice(&events), gstate)
     // UI 
-    if .Global_Pause in cmd_list {
+    if .Global_Pause in cmds {
       break main_loop
     }
+    ui_handle_input(ui_data, cmds, input_data)
+
+    sa.clear(&events)
       // append(&events2, event)
 
       // #partial switch event.type {
@@ -504,18 +519,6 @@ main :: proc() {
       // }
     // }
 
-    fmt.printfln("%#v", events)
-    sa.clear(&events)
-    // for e in sa.slice(&events) {
-    //   fmt.print(e.type)
-    //   fmt.print(" ")
-    // }
-    // fmt.println()
-
-    // for e in events2 {
-    //   fmt.print(e.type)
-    //   fmt.print(" ")
-    // }
 
     gl.ClearColor(1.0, 0.8039, 0.7882, 1.0) // FFCDC9
     gl.Clear(gl.COLOR_BUFFER_BIT)
