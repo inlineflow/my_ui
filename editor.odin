@@ -24,6 +24,13 @@ Editor :: struct {
 }
 
 push_char :: proc(editor: ^Editor, char: rune) {
+  if char < 32 || char > 126 {
+    when ODIN_DEBUG {
+      fmt.printfln("tried to print non ASCII: %v", char)
+    }
+    return
+  }
+  
   line_index := editor.cursor_pos.y
   line := &editor.lines[line_index].text
   append(line, char)

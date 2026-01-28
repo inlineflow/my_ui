@@ -86,6 +86,12 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
     }
   }
 
+  for &e in events {
+    if e.type == .QUIT {
+      cmd_list += { .Global_Pause }
+    }
+  }
+
   switch state {
   case .Editor_Active: {
     for &event in events {
@@ -133,9 +139,11 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
           }
 
         case .TEXTINPUT:
-          fmt.println(event)
-          cs := cstring(raw_data(&event.text.text))
-          res.text = strings.clone_from_cstring(cs)
+          fmt.println(event.text.text)
+          cs := cstring(raw_data(event.text.text[:]))
+          s := strings.clone_from_cstring(cs)
+          res.text = s
+          fmt.println(s)
           cmd_list += { .Editor_Text }
       }
     }
@@ -168,14 +176,14 @@ ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
     if click.state == .Down {
       h := w.handle
       if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + w.size.x && cast(f32)click.pos.y > w.pos.y + h.size.y && cast(f32)click.pos.y < w.pos.y + w.size.y {
-          fmt.println("in window by x and y")
+          // fmt.println("in window by x and y")
           w.state += { .ACTIVE }
       } else {
           w.state -= { .ACTIVE }
       }
 
       if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + h.size.x && cast(f32)click.pos.y > w.pos.y && cast(f32)click.pos.y < w.pos.y + h.size.y {
-        fmt.println("we're in handle by x and y")
+        // fmt.println("we're in handle by x and y")
         w.state += { .DRAGGED, .CLICKED, .ACTIVE }
       }
 
@@ -194,13 +202,14 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
   h := w.handle
   for click in input.mouse.clicks {
     if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + w.size.x && cast(f32)click.pos.y > w.pos.y + h.size.y && cast(f32)click.pos.y < w.pos.y + w.size.y {
-      fmt.println("we're in the text box")
+      // fmt.println("we're in the text box")
       // detect cursor hit here
     }
   }
 
   if .Editor_Text in cmds {
     for r in input.text {
+      fmt.println(r)
       push_char(editor_win.editor, r)
     }
     // fmt.println(input.text)
