@@ -9,6 +9,7 @@ Cmd_Type :: enum {
   Editor_Cursor_Right,
   Editor_Cursor_Down,
   Editor_Cursor_Left,
+  Editor_Text,
   Editor_Paste,
   Editor_Copy,
   Editor_Cursor_Move,
@@ -77,11 +78,14 @@ Game_State_Type :: enum {
 
 Game_State :: bit_set[Game_State_Type]
 
-// TODO: clean up the api
-// this proc probably shouldn't update the state of the game, just read it
-// handle_input :: proc(event: ^sdl.Event, state: Game_State) -> (Cmd_List, Input_Data)
-// handle_input :: proc(event: ^sdl.Event, state:^Game_State,  cmd_list: ^Cmd_List) -> Input_Data {
-process_input :: proc(events: []sdl.Event, state:Game_State_Type) -> (cmd_list: Cmd_List, res: Input_Data) {
+process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_input: Input_Data) -> (cmd_list: Cmd_List, res: Input_Data) {
+  // TODO: this is an ugly hack, kinda have to fix that later
+  for b, i in last_frame_input.mouse.clicks {
+    if b.state == .Down {
+      res.mouse.clicks[i] = b
+    }
+  }
+
   switch state {
   case .Editor_Active: {
     for &event in events {
@@ -132,6 +136,7 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type) -> (cmd_list: 
           fmt.println(event)
           cs := cstring(raw_data(&event.text.text))
           res.text = strings.clone_from_cstring(cs)
+          cmd_list += { .Editor_Text }
       }
     }
   }
@@ -154,6 +159,7 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type) -> (cmd_list: 
 
 ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
   click := input_data.mouse.clicks[Mouse_Button.Left]
+  // fmt.println(click)
   for w in ui.windows {
     if w == nil {
       continue
@@ -170,41 +176,35 @@ ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
 
       if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + h.size.x && cast(f32)click.pos.y > w.pos.y && cast(f32)click.pos.y < w.pos.y + h.size.y {
         fmt.println("we're in handle by x and y")
-        w.state += { .DRAGGED, .CLICKED }
+        w.state += { .DRAGGED, .CLICKED, .ACTIVE }
       }
-    }
 
-    if click.state == .Up {
+      if .DRAGGED in w.state {
+          w.pos += [2]f32 { cast(f32)input_data.mouse.rel.x, cast(f32)input_data.mouse.rel.y }
+      }
+    } else {
       w.state -= { .DRAGGED }
-    }
-
-    if .DRAGGED in w.state {
-        w.pos += [2]f32 { cast(f32)input_data.mouse.rel.x, cast(f32)input_data.mouse.rel.y }
     }
   }
 
-      // // case .MOUSEBUTTONDOWN:
-      // //   // fmt.println(event.button.x, event.button.y)
-      // //   click := v2{cast(f32)event.button.x, cast(f32)event.button.y}
-      // //   // w_pos := editor_window.pos
-      // //   // w := editor_window
-      // //
-      // //   w := &editor_window
-      // //   h := editor_window.handle
-      // //   if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y + h.size.y && click.y < w.pos.y + w.size.y {
-      // //       fmt.println("in window by x and y")
-      // //       fmt.println(editor_window.editor.cursor_pos)
-      // //       w.state += { .ACTIVE }
-      // //   } else {
-      // //       w.state -= { .ACTIVE }
-      // //   }
-      // //   if click.x > w.pos.x && click.x < w.pos.x + h.size.x && click.y > w.pos.y && click.y < w.pos.y + h.size.y {
-      // //     fmt.println("we're in handle by x and y")
-      // //     w.state += { .DRAGGED, .CLICKED }
-      // //   }
-      // //
-      // // case .MOUSEBUTTONUP:
-      // //   editor_window.state -= { .DRAGGED, .CLICKED }
+}
+
+text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, input: Input_Data) {
+  w := editor_win
+  h := w.handle
+  for click in input.mouse.clicks {
+    if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + w.size.x && cast(f32)click.pos.y > w.pos.y + h.size.y && cast(f32)click.pos.y < w.pos.y + w.size.y {
+      fmt.println("we're in the text box")
+      // detect cursor hit here
+    }
+  }
+
+  if .Editor_Text in cmds {
+    for r in input.text {
+      push_char(editor_win.editor, r)
+    }
+    // fmt.println(input.text)
+  }
 }
 
 // handle_input :: proc(event: sdl.Event) {

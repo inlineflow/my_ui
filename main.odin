@@ -40,7 +40,7 @@ UI_Window :: struct {
 
 UI_Editor_Window :: struct {
   using window: UI_Window,
-  editor: Editor,
+  editor: ^Editor,
 }
 
 UI_Any_Window :: union {
@@ -381,7 +381,7 @@ main :: proc() {
     rd = &ui_rect_rd,
     // buttons = { b },
     handle = { size = { 800, 25 } },
-    editor = Editor {
+    editor = &Editor {
       glyphs = glyphs,
       // text = "hello world",
       lines = make([dynamic]Line),
@@ -399,7 +399,7 @@ main :: proc() {
   append(&editor_window.editor.lines, l)
 
   for c in "hello world" {
-    push_char(&editor_window.editor, c)
+    push_char(editor_window.editor, c)
     // append(&editor_window.editor.lines[0].text, c)
   }
 
@@ -415,6 +415,8 @@ main :: proc() {
   }
   events: sa.Small_Array(64, sdl.Event)
   gstate := Game_State.Editor_Active
+  input_data := Input_Data{}
+  cmds := Cmd_List{}
   main_loop: for {
 
     now = sdl.GetPerformanceCounter()
@@ -428,12 +430,14 @@ main :: proc() {
       sa.push(&events, event)
     }
 
-    cmds, input_data := process_input(sa.slice(&events), gstate)
+    cmds, input_data = process_input(sa.slice(&events), gstate, input_data)
+    // fmt.println(input_data)
     // UI 
     if .Global_Pause in cmds {
       break main_loop
     }
     ui_handle_input(ui_data, cmds, input_data)
+    text_editor_handle_input(&editor_window, cmds, input_data)
 
     sa.clear(&events)
       // append(&events2, event)
