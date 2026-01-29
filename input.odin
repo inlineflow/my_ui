@@ -3,6 +3,7 @@ package my_ui
 import sdl "sdl2"
 import "core:fmt"
 import "core:strings"
+import "core:math"
 
 Cmd_Type :: enum {
   Editor_Cursor_Up,
@@ -204,6 +205,19 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
     if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + w.size.x && cast(f32)click.pos.y > w.pos.y + h.size.y && cast(f32)click.pos.y < w.pos.y + w.size.y {
       // fmt.println("we're in the text box")
       // detect cursor hit here
+      hit := [2]f32{cast(f32)click.pos.x, cast(f32)click.pos.y} - w.pos
+      hit = {math.floor(hit.x / cast(f32)w.editor.max_advance_px), math.floor(hit.y / cast(f32)w.editor.line_height_px) }
+      new_line := math.min(math.min(cast(u32)len(w.editor.lines), cast(u32)hit.y) - 1, 0)
+      assert(new_line >= 0)
+      new_column := math.min(cast(u32)len(w.editor.lines[new_line].text), cast(u32)hit.x)
+      new_pos := [2]u32{
+        new_column,
+        new_line,
+      }
+      w.editor.cursor_pos = new_pos
+      fmt.println(new_pos)
+
+      // fmt.println([2]f32{cast(f32)click.pos.x, cast(f32)click.pos.y} - w.pos)
     }
   }
 
@@ -213,6 +227,17 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
       push_char(editor_win.editor, r)
     }
     // fmt.println(input.text)
+  }
+
+  switch cmds {
+    case {.Editor_Cursor_Up}:
+      w.editor.cursor_pos.y += 1
+    case {.Editor_Cursor_Right}:
+      w.editor.cursor_pos.x += 1
+    case {.Editor_Cursor_Down}:
+      w.editor.cursor_pos.y -= 1
+    case {.Editor_Cursor_Left}:
+      w.editor.cursor_pos.x -= 1
   }
 }
 

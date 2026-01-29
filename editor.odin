@@ -1,6 +1,7 @@
 package my_ui
 
 import ft "shared:freetype"
+import "core:fmt"
 
 Glyph :: struct {
   texture_id: u32,
