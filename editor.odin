@@ -33,22 +33,26 @@ push_char :: proc(editor: ^Editor, char: rune) {
     return
   }
   
+  fmt.println("cur: ", editor.cursor_pos)
   line_index := editor.cursor_pos.y - 1
   line := &editor.lines[line_index].text
   append(line, char)
   editor.cursor_pos.x += 1
 }
 
-place_cursor :: proc(editor: ^Editor, new_pos: [2]i32) {
-      new_pos := new_pos
-      fmt.println("new_pos: ", new_pos)
-      new_line_index := math.max(math.min(cast(i32)len(editor.lines), new_pos.y) - 1, 0)
+// TODO: going up is broken
+place_cursor :: proc(editor: ^Editor, new_target_pos: [2]i32) {
+      // assert(editor.cursor_pos.x > 0 && editor.cursor_pos.y > 0)
+      new_target_pos := new_target_pos
+      fmt.println("new_target_pos: ", new_target_pos)
+      new_line_index := math.max(math.min(cast(i32)len(editor.lines), new_target_pos.y) - 1, 0)
       assert(new_line_index >= 0)
-      new_column := math.max(math.min(cast(i32)len(editor.lines[new_line_index].text), cast(i32)new_pos.x), 0)
+      new_column := math.max(math.min(cast(i32)len(editor.lines[new_line_index - 1].text) + 1, cast(i32)new_target_pos.x), 1)
       assert(new_column >= 0)
-      np := [2]i32{
+      new_pos := [2]i32{
         new_column,
         new_line_index + 1,
       }
-      editor.cursor_pos = np
+      fmt.println("new_pos: ", new_pos)
+      editor.cursor_pos = new_pos
 }

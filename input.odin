@@ -207,8 +207,8 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
       // detect cursor hit here
       hit := [2]i32{click.pos.x, click.pos.y} - {cast(i32)w.pos.x, cast(i32)w.pos.y}
       // hit := [2]u32{cast
-      hit = {hit.x / cast(i32)w.editor.max_advance_px, hit.y / cast(i32)w.editor.line_height_px }
-      place_cursor(w.editor, hit)
+      hit_line_column:[2]i32 = {hit.x / cast(i32)w.editor.max_advance_px, (hit.y / cast(i32)w.editor.line_height_px)}
+      place_cursor(w.editor, hit_line_column)
       // new_line := math.min(math.min(cast(u32)len(w.editor.lines), cast(u32)hit.y) - 1, 0)
       // assert(new_line >= 0)
       // new_column := math.min(cast(u32)len(w.editor.lines[new_line].text), cast(u32)hit.x)

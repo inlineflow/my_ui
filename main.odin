@@ -256,9 +256,10 @@ draw_editor :: proc(e: UI_Editor_Window, os_window: OS_Window, draw_cursor: bool
     render_text(e.editor.font_rd, e.editor.face, e.editor.glyphs, text, e.pos.x , e.pos.y + e.handle.size.y + cast(f32)y_offset, 1, {1, 1, 1})
   }
 
-  cursor_size := v2{2, 19}
+  cursor_size := v2{2, 20}
   if .ACTIVE in e.state && draw_cursor {
-    ui_draw_rect({e.pos.x + cast(f32)e.editor.cursor_pos.x * cast(f32)e.editor.max_advance_px, e.pos.y + e.handle.size.y + cast(f32)(cast(i32)e.editor.line_height_px * e.editor.cursor_pos.y)}, cursor_size, e.rd^, {1, 1, 1})
+    ui_draw_rect({e.pos.x + cast(f32)(e.editor.cursor_pos.x - 1) * cast(f32)e.editor.max_advance_px,
+                  e.pos.y + e.handle.size.y + cast(f32)(cast(i32)e.editor.line_height_px * (e.editor.cursor_pos.y - 1))}, cursor_size, e.rd^, {1, 1, 1})
   }
 
   gl.Scissor(0, 0, cast(i32)os_window.size.x, cast(i32)os_window.size.y)
