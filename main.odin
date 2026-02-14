@@ -251,7 +251,9 @@ draw_editor :: proc(e: UI_Editor_Window, os_window: OS_Window, draw_cursor: bool
   lines := e.editor.lines
   gl.Scissor(cast(i32)e.pos.x, cast(i32)e.pos.y, cast(i32)e.size.x, cast(i32)e.size.y)
   for line, line_index in lines {
-    text := utf8.runes_to_string(line.text[:])
+    text := string(line.buf[:line.reserved_starts_at])
+    // text := line.text
+    // fmt.printfln("Rendering text: \n %#v", text)
     y_offset := cast(u32)line_index * e.editor.line_height_px
     render_text(e.editor.font_rd, e.editor.face, e.editor.glyphs, text, e.pos.x , e.pos.y + e.handle.size.y + cast(f32)y_offset, 1, {1, 1, 1})
   }
@@ -395,7 +397,7 @@ main :: proc() {
   }
 
   l := Line {
-    text = make([dynamic]rune),
+    buf = make([dynamic]byte, 0, 80),
   }
 
   append(&editor_window.editor.lines, l)
@@ -543,4 +545,7 @@ main :: proc() {
     acc += dt
   }
   fmt.println("hello world")
+  ttt := "123"
+  fmt.println(ttt[:2])
+  fmt.println(ttt[1:])
 }

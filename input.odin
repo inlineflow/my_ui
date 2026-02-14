@@ -4,6 +4,8 @@ import sdl "sdl2"
 import "core:fmt"
 import "core:strings"
 import "core:math"
+import "core:slice"
+import "core:mem"
 
 Cmd_Type :: enum {
   Editor_Cursor_Up,
@@ -245,16 +247,50 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
       new_pos := [2]i32{w.editor.cursor_pos.x - 1, w.editor.cursor_pos.y}
       place_cursor(w.editor, new_pos)
     case {.Editor_Newline}:
-      l := Line {
-        text = make([dynamic]rune),
+
+      current_line_index := w.editor.cursor_pos.y - 1
+      current_line := &w.editor.lines[current_line_index]
+      current_line_str := string(w.editor.lines[w.editor.cursor_pos.y - 1].buf[:current_line.reserved_starts_at])
+
+      // TODO: fix this
+      if current_line_str == "" {
+        l := Line {
+          buf = make([dynamic]byte),
+        }
+        // append(&w.editor.lines, l)
+        inject_at(&w.editor.lines, current_line_index + 1, l)
+        new_pos := [2]i32{0, w.editor.cursor_pos.y + 1 }
+        place_cursor(w.editor, new_pos)
+      } else {
+        // TODO: this indexes using ASCII, won't work with arbitrary UTF-8 | maybe I should fix that
+        cur := w.editor.cursor_pos.x - 1
+        left := current_line_str[:cur]
+        right := current_line_str[cur:]
+        new_line_buf, err := slice.clone_to_dynamic(transmute([]byte)right)
+        if err != nil {
+          fmt.eprintln("Couldn't clone text to dynamic array when creating a new line")
+          return
+        }
+
+        reserve(&new_line_buf, DEFAULT_COLUMN_LENGTH)
+        l := Line {
+          buf = new_line_buf,
+          text = string(new_line_buf[:]),
+          reserved_starts_at = len(right),
+        }
+        // append(&w.editor.lines, l)
+        leftover_len := len(left)
+        inject_at(&w.editor.lines, current_line_index + 1, l)
+        resize(&current_line.buf, leftover_len)
+        current_line.reserved_starts_at = leftover_len
+
+        current_line.text = string(current_line.buf[:current_line.reserved_starts_at])
+        new_pos := [2]i32{0, w.editor.cursor_pos.y + 1 }
+        place_cursor(w.editor, new_pos)
+        // fmt.println("left: ", left)
+        // fmt.println("right: ", right)
       }
-      append(&w.editor.lines, l)
-      p := [2]i32{0, w.editor.cursor_pos.y + 1 }
-      // p.x = 0
-      // p.y = w.editor.cursor_pos.y + 1
-      fmt.println("p: ", p)
-      place_cursor(w.editor, p)
-      // w.editor.cursor_pos.x = 0
+
   }
 }
 

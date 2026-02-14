@@ -3,6 +3,9 @@ package my_ui
 import ft "shared:freetype"
 import "core:fmt"
 import "core:math"
+import "core:unicode/utf8"
+
+DEFAULT_COLUMN_LENGTH :: 80
 
 Glyph :: struct {
   texture_id: u32,
@@ -12,7 +15,9 @@ Glyph :: struct {
 }
 
 Line :: struct {
-  text: [dynamic]rune,
+  buf: [dynamic]byte,
+  text: string,
+  reserved_starts_at: int,
 }
 
 Editor :: struct {
@@ -25,6 +30,12 @@ Editor :: struct {
   max_advance_px: u32,
 }
 
+// push_new_line :: proc(editor: ^Editor, pre_alloc_chars: int) {
+//   l := Line {
+//     buf = make([dynamic]byte, 0, pre_alloc_chars),
+//   }
+// }
+
 push_char :: proc(editor: ^Editor, char: rune) {
   if char < 32 || char > 126 {
     when ODIN_DEBUG {
@@ -35,8 +46,12 @@ push_char :: proc(editor: ^Editor, char: rune) {
   
   fmt.println("cur: ", editor.cursor_pos)
   line_index := editor.cursor_pos.y - 1
-  line := &editor.lines[line_index].text
-  append(line, char)
+  line := &editor.lines[line_index]
+  // line_buf := line.buf
+  bytes, byte_count := utf8.encode_rune(char)
+  append(&line.buf, ..bytes[:byte_count])
+  line.text = string(line.buf[:line.reserved_starts_at])
+  line.reserved_starts_at += 1
   editor.cursor_pos.x += 1
 }
 
@@ -45,13 +60,14 @@ place_cursor :: proc(editor: ^Editor, new_target_pos: [2]i32) {
       // assert(editor.cursor_pos.x > 0 && editor.cursor_pos.y > 0)
       new_target_pos := new_target_pos
       fmt.println("new_target_pos: ", new_target_pos)
-      new_line_index := math.max(math.min(cast(i32)len(editor.lines), new_target_pos.y) - 1, 0)
-      assert(new_line_index >= 0)
-      new_column := math.max(math.min(cast(i32)len(editor.lines[new_line_index - 1].text) + 1, cast(i32)new_target_pos.x), 1)
-      assert(new_column >= 0)
+      // new_line_index := math.max(math.min(cast(i32)len(editor.lines), new_target_pos.y) - 1, 0)
+      new_line := math.max(math.min(cast(i32)len(editor.lines), new_target_pos.y), 1)
+      assert(new_line >= 1)
+      new_column := math.max(math.min(cast(i32)len(editor.lines[new_line - 1].buf) + 1, cast(i32)new_target_pos.x), 1)
+      assert(new_column >= 1)
       new_pos := [2]i32{
         new_column,
-        new_line_index + 1,
+        new_line,
       }
       fmt.println("new_pos: ", new_pos)
       editor.cursor_pos = new_pos
