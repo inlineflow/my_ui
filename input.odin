@@ -17,6 +17,7 @@ Cmd_Type :: enum {
   Editor_Copy,
   Editor_Cursor_Move,
   Editor_Newline,
+  Editor_Backspace,
   Game_Move_Up,
   Global_Pause,
   Global_Unpause,
@@ -116,6 +117,8 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
               cmd_list += { .Editor_Cursor_Left }
             case .RETURN:
               cmd_list += { .Editor_Newline }
+            case .BACKSPACE:
+              cmd_list += { .Editor_Backspace }
           }
         }
 
@@ -202,6 +205,7 @@ ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
 
 text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, input: Input_Data) {
   w := editor_win
+  editor := w.editor
   h := w.handle
   for click in input.mouse.clicks {
     if cast(f32)click.pos.x > w.pos.x && cast(f32)click.pos.x < w.pos.x + w.size.x && cast(f32)click.pos.y > w.pos.y + h.size.y && cast(f32)click.pos.y < w.pos.y + w.size.y {
@@ -250,7 +254,7 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
 
       current_line_index := w.editor.cursor_pos.y - 1
       current_line := &w.editor.lines[current_line_index]
-      current_line_str := string(w.editor.lines[w.editor.cursor_pos.y - 1].buf[:current_line.reserved_starts_at])
+      current_line_str := string(current_line.buf[:current_line.reserved_starts_at])
 
       // TODO: fix this
       if current_line_str == "" {
@@ -279,18 +283,32 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
           reserved_starts_at = len(right),
         }
         // append(&w.editor.lines, l)
-        leftover_len := len(left)
-        inject_at(&w.editor.lines, current_line_index + 1, l)
-        resize(&current_line.buf, leftover_len)
-        current_line.reserved_starts_at = leftover_len
 
+        leftover_len := len(left)
+        current_line.reserved_starts_at = leftover_len
         current_line.text = string(current_line.buf[:current_line.reserved_starts_at])
+        resize(&current_line.buf, leftover_len)
+        inject_at(&w.editor.lines, current_line_index + 1, l)
         new_pos := [2]i32{0, w.editor.cursor_pos.y + 1 }
         place_cursor(w.editor, new_pos)
         // fmt.println("left: ", left)
         // fmt.println("right: ", right)
       }
 
+    case {.Editor_Backspace}:
+      current_line_index := w.editor.cursor_pos.y - 1
+      current_line := &w.editor.lines[current_line_index]
+      current_line_str := string(current_line.buf[:current_line.reserved_starts_at])
+      delete_index := editor.cursor_pos.x - 2
+      if editor.cursor_pos.x == cast(i32)len(current_line.buf) + 1 {
+        pop(&current_line.buf)
+        current_line.reserved_starts_at -= 1
+        editor.cursor_pos.x -= 1
+      } else if delete_index >= 0 {
+        ordered_remove(&current_line.buf, delete_index)
+        current_line.reserved_starts_at -= 1
+        editor.cursor_pos.x -= 1
+      }
   }
 }
 
