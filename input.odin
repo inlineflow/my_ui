@@ -232,6 +232,7 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
   if .Editor_Text in cmds {
     for r in input.text {
       fmt.println(r)
+      // TODO: detect the cursor position and inject the character at that position
       push_char(editor_win.editor, r)
     }
     // fmt.println(input.text)
