@@ -4,6 +4,7 @@ import ft "shared:freetype"
 import "core:fmt"
 import "core:math"
 import "core:unicode/utf8"
+import "core:slice"
 
 DEFAULT_COLUMN_LENGTH :: 80
 
@@ -36,7 +37,7 @@ Editor :: struct {
 //   }
 // }
 
-push_char :: proc(editor: ^Editor, char: rune) {
+push_char :: proc(editor: ^Editor, char: rune, #any_int index: int = -1) {
   if char < 32 || char > 126 {
     when ODIN_DEBUG {
       fmt.printfln("tried to print non ASCII: %v", char)
@@ -44,15 +45,37 @@ push_char :: proc(editor: ^Editor, char: rune) {
     return
   }
   
-  fmt.println("cur: ", editor.cursor_pos)
+  // fmt.println("cur: ", editor.cursor_pos)
   line_index := editor.cursor_pos.y - 1
   line := &editor.lines[line_index]
   // line_buf := line.buf
   bytes, byte_count := utf8.encode_rune(char)
-  append(&line.buf, ..bytes[:byte_count])
-  line.text = string(line.buf[:line.reserved_starts_at])
-  line.reserved_starts_at += 1
-  editor.cursor_pos.x += 1
+  if index == -1 {
+    append(&line.buf, ..bytes[:byte_count])
+    line.text = string(line.buf[:line.reserved_starts_at])
+    line.reserved_starts_at += 1
+    editor.cursor_pos.x += 1
+  } else {
+    // fmt.println("index: ", index)
+    left := line.buf[:editor.cursor_pos.x - 1]
+    right := slice.clone(line.buf[editor.cursor_pos.x - 1:], context.temp_allocator)
+    // new_line := left
+    resize(&line.buf, len(left))
+    append(&line.buf, ..bytes[:byte_count])
+    append(&line.buf, ..right)
+    line.reserved_starts_at += 1
+    editor.cursor_pos.x += 1
+    fmt.println(string(line.buf[:]))
+    free_all(context.temp_allocator)
+    // append(new_line, ..bytes[:byte_count])
+    // append(new_line, ..right)
+    // fmt.println(string(left))
+    // fmt.println(string(right))
+  }
+
+  // line.text = string(line.buf[:line.reserved_starts_at])
+  // line.reserved_starts_at += 1
+  // editor.cursor_pos.x += 1
 }
 
 // TODO: going up is broken

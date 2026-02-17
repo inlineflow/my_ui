@@ -18,6 +18,7 @@ Cmd_Type :: enum {
   Editor_Cursor_Move,
   Editor_Newline,
   Editor_Backspace,
+  Editor_Tab,
   Game_Move_Up,
   Global_Pause,
   Global_Unpause,
@@ -119,6 +120,8 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
               cmd_list += { .Editor_Newline }
             case .BACKSPACE:
               cmd_list += { .Editor_Backspace }
+            case .TAB:
+              cmd_list += { .Editor_Tab }
           }
         }
 
@@ -229,11 +232,23 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
     }
   }
 
+  if .Editor_Tab in cmds {
+    for i in 0..<2 {
+      pos := editor.cursor_pos.x - 1
+      push_char(editor_win.editor, ' ', pos)
+    }
+  }
+
   if .Editor_Text in cmds {
     for r in input.text {
-      fmt.println(r)
+      // fmt.println(r)
       // TODO: detect the cursor position and inject the character at that position
-      push_char(editor_win.editor, r)
+      pos := editor.cursor_pos.x - 1
+      push_char(editor_win.editor, r, pos)
+      // pos := editor.cursor_pos.x - 1
+      // current_line_index := w.editor.cursor_pos.y - 1
+      // current_line := &w.editor.lines[current_line_index]
+      // inject_at(current_line.buf, pos, r)
     }
     // fmt.println(input.text)
   }
@@ -252,7 +267,6 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
       new_pos := [2]i32{w.editor.cursor_pos.x - 1, w.editor.cursor_pos.y}
       place_cursor(w.editor, new_pos)
     case {.Editor_Newline}:
-
       current_line_index := w.editor.cursor_pos.y - 1
       current_line := &w.editor.lines[current_line_index]
       current_line_str := string(current_line.buf[:current_line.reserved_starts_at])
@@ -297,11 +311,18 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
       }
 
     case {.Editor_Backspace}:
+      if editor.cursor_pos == {1, 1} { return }
+
       current_line_index := w.editor.cursor_pos.y - 1
       current_line := &w.editor.lines[current_line_index]
       current_line_str := string(current_line.buf[:current_line.reserved_starts_at])
       delete_index := editor.cursor_pos.x - 2
-      if editor.cursor_pos.x == cast(i32)len(current_line.buf) + 1 {
+      if len(current_line.buf) == 0 {
+        ordered_remove(&editor.lines, current_line_index)
+        editor.cursor_pos.y -= 1
+        new_line := editor.lines[current_line_index - 1]
+        editor.cursor_pos.x = cast(i32)len(new_line.buf) + 1
+      } else if editor.cursor_pos.x == cast(i32)len(current_line.buf) + 1 {
         pop(&current_line.buf)
         current_line.reserved_starts_at -= 1
         editor.cursor_pos.x -= 1
