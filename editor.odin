@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:math"
 import "core:unicode/utf8"
 import "core:slice"
+import "core:strings"
 
 DEFAULT_COLUMN_LENGTH :: 80
 
@@ -76,6 +77,15 @@ push_char :: proc(editor: ^Editor, char: rune, #any_int index: int = -1) {
   // line.text = string(line.buf[:line.reserved_starts_at])
   // line.reserved_starts_at += 1
   // editor.cursor_pos.x += 1
+}
+
+get_editor_text :: proc(e: ^Editor) -> string {
+  lines_str := make([dynamic]string, context.temp_allocator)
+  for l in e.lines {
+    append(&lines_str, string(l.buf[:l.reserved_starts_at]))
+  }
+  text := strings.join(lines_str[:], "\n", context.temp_allocator)
+  return text
 }
 
 // TODO: going up is broken

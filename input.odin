@@ -19,6 +19,7 @@ Cmd_Type :: enum {
   Editor_Newline,
   Editor_Backspace,
   Editor_Tab,
+  Editor_Print,
   Game_Move_Up,
   Global_Pause,
   Global_Unpause,
@@ -122,6 +123,10 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
               cmd_list += { .Editor_Backspace }
             case .TAB:
               cmd_list += { .Editor_Tab }
+            case .P:
+              if .LCTRL  in event.key.keysym.mod || .RCTRL in event.key.keysym.mod {
+                cmd_list += { .Editor_Print }
+              }
           }
         }
 
@@ -331,6 +336,9 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
         current_line.reserved_starts_at -= 1
         editor.cursor_pos.x -= 1
       }
+    case {.Editor_Print}:
+      text := get_editor_text(editor)
+      fmt.println(text)
   }
 }
 
