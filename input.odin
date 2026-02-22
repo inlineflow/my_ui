@@ -258,6 +258,8 @@ text_editor_handle_input :: proc(app_data: Application_Data, cmds: Cmd_List, inp
       pos := editor.cursor_pos.x - 1
       push_char(editor_win.editor, r, pos)
     }
+
+    delete(input.text)
   }
 
   switch cmds {

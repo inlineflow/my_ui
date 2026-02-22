@@ -327,21 +327,21 @@ make_glyphs :: proc(face: ft.Face) -> map[rune]Glyph {
 
 main :: proc() {
 
-  when ODIN_DEBUG {
-    track: mem.Tracking_Allocator
-    mem.tracking_allocator_init(&track, context.allocator)
-    context.allocator = mem.tracking_allocator(&track)
-
-    defer {
-      if len(track.allocation_map) > 0 {
-        for _, entry in track.allocation_map {
-          fmt.eprintf("%v leaked %v bytes\n", entry.location, entry.size)
-        }
-      }
-
-      mem.tracking_allocator_destroy(&track)
-    }
-  }
+  // when ODIN_DEBUG {
+  //   track: mem.Tracking_Allocator
+  //   mem.tracking_allocator_init(&track, context.allocator)
+  //   context.allocator = mem.tracking_allocator(&track)
+  //
+  //   defer {
+  //     if len(track.allocation_map) > 0 {
+  //       for _, entry in track.allocation_map {
+  //         fmt.eprintf("%v leaked %v bytes\n", entry.location, entry.size)
+  //       }
+  //     }
+  //
+  //     mem.tracking_allocator_destroy(&track)
+  //   }
+  // }
 
   sdl.Init({.TIMER, .VIDEO})
   window := sdl.CreateWindow("SDL2", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, START_WINDOW_WIDTH, START_WINDOW_HEIGHT, {.OPENGL, .RESIZABLE} )
@@ -417,6 +417,18 @@ main :: proc() {
     }
   }
 
+  console_window := UI_Window{
+    // pos = root_os_window.size / 2 - {800, 600} / 2,
+    // size = {800, 600},
+    pos = {0, 0},
+    size = {200, 200},
+    color = {0.6, 0.6, 0.6},
+    active_color = {0.7, 0.7, 0.7},
+    rd = &ui_rect_rd,
+    handle = { size = { 200, 25 } },
+  }
+
+
   l := Line {
     buf = make([dynamic]byte, 0, 80),
   }
@@ -431,6 +443,7 @@ main :: proc() {
   ui_data := UI_Data {
     windows = [MAX_WINDOWS]^UI_Window {
       0 = &editor_window,
+      1 = &console_window,
     },
   }
   events: sa.Small_Array(64, sdl.Event)
@@ -477,6 +490,23 @@ main :: proc() {
     game = &game_data,
   }
 
+
+  when ODIN_DEBUG {
+    track: mem.Tracking_Allocator
+    mem.tracking_allocator_init(&track, context.allocator)
+    context.allocator = mem.tracking_allocator(&track)
+
+    defer {
+      if len(track.allocation_map) > 0 {
+        for _, entry in track.allocation_map {
+          fmt.eprintf("%v leaked %v bytes\n", entry.location, entry.size)
+        }
+      }
+
+      mem.tracking_allocator_destroy(&track)
+    }
+  }
+
   main_loop: for {
     now = sdl.GetPerformanceCounter()
     elapsed_ticks: u64 = now - last
@@ -505,6 +535,8 @@ main :: proc() {
     if acc >= threshhold * 2 {
       acc = 0
     }
+    draw_window(console_window)
+    // draw_console(console_window, root_os_window)
     sdl.GL_SwapWindow(window)
     acc += dt
 
