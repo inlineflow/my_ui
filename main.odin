@@ -469,7 +469,7 @@ main :: proc() {
 //     time.sleep(time.Second * 1)
 //   }
 //
-  log_chan := cast(^chan.Chan(string, .Both))thsafe_logger.data
+  log_chan := chan.as_recv((cast(^chan.Chan(string, .Both))thsafe_logger.data)^)
   game_data := Game_Data{}
   app_data := Application_Data {
     editor = &editor_window,
@@ -508,8 +508,11 @@ main :: proc() {
     sdl.GL_SwapWindow(window)
     acc += dt
 
+    if chan.len(log_chan) > 0 {
+      fmt.println(chan.len(log_chan))
+    }
     for i in 0..<chan.len(log_chan) {
-      msg, _ := chan.recv(chan.as_recv(log_chan^))
+      msg, _ := chan.recv(log_chan)
       fmt.println(msg)
     }
   }

@@ -13,6 +13,29 @@ import "core:log"
 import "core:time"
 import vmem "core:mem/virtual"
 
+dump_lua_stack :: proc(L: ^lua.State) {
+  top := lua.gettop(L)
+  log.debugf("STACK TOP: %d", top)
+
+  for i in 1..=top {
+    t := lua.type(L, i)
+    type_name := lua.typename(L, t)
+
+    #partial switch t {
+    case lua.TSTRING:
+      log.debugf("%d: %s = '%s'", i, type_name, lua.tostring(L, i))
+    case lua.TNUMBER:
+      log.debugf("%d: %s = '%f'", i, type_name, lua.L_checknumber(L, i))
+    case lua.TBOOLEAN:
+      log.debugf("%d: %s = '%s'", i, type_name, lua.toboolean(L, i))
+    case lua.TNIL:
+      log.debugf("%d: %s = 'nil'", i, type_name)
+    case:
+      log.debugf("%d: %s = %p", i, type_name, lua.topointer(L, i))
+    }
+  }
+}
+
 lua_allocator :: proc "c" (ud: rawptr, ptr: rawptr, osize, nsize: c.size_t) -> (buf: rawptr) {
 	old_size := int(osize)
 	new_size := int(nsize)
@@ -63,7 +86,9 @@ lua_vm_print :: proc "c" (L: ^lua.State) -> i32 {
   print_data := cast(^Lua_Print_Data)lua.touserdata(L,  lua_upvalueindex(1))
   context = print_data._context^
   log.debugf("number of arguments passed to print: %v", nargs)
-  for i in 0..=nargs {
+  // log.debug("dumping stack")
+  // dump_lua_stack(L)
+  for i in 1..=nargs {
     msg := lua.L_checkstring(L, i)
     log.debug(msg)
   }
@@ -95,6 +120,8 @@ start_lua_vm :: proc(lua_vm_data: ^Lua_VM_Data) {
       break
     }
 
+    base := lua.gettop(L)
+
     cstr_src := strings.clone_to_cstring(lua_vm_data.source); defer delete(cstr_src)
     compile_err_code := lua.L_loadstring(L, cstr_src)
     if compile_err_code != .OK {
@@ -109,6 +136,8 @@ start_lua_vm :: proc(lua_vm_data: ^Lua_VM_Data) {
       lua.pop(L, 1)
       continue
     }
+
+    lua.settop(L, base)
 
     // str := lua.tostring(L, -1)
     // log.debug(str)
@@ -149,7 +178,7 @@ create_threadsafe_queue_logger :: proc() -> (log.Logger, bool) {
     procedure = threadsafely_log,
     data = new_clone(thsafe_logger_data),
     lowest_level = .Debug,
-    options = {.Level, .Terminal_Color, .Short_File_Path, .Line, .Procedure, .Thread_Id} 
+    options = {.Level, .Terminal_Color, .Short_File_Path, .Line, .Procedure, .Thread_Id, .Time} 
   }, false
 }
 
@@ -161,6 +190,7 @@ threadsafely_log :: proc(data: rawptr, level: runtime.Logger_Level, text: string
 
   log.do_level_header(options, &buf, level)
   log.do_location_header(options, &buf, location)
+  log.do_time_header(options, &buf, time.now()) 
   fmt.sbprintf(&buf, "[{}] ", os.current_thread_id())
   fmt.sbprintf(&buf, "%s", text)
   chan.send(c, strings.clone(strings.to_string(buf)))
