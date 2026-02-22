@@ -10,6 +10,12 @@ import "core:strings"
 import ft "shared:freetype"
 import "core:unicode/utf8"
 import sa "core:container/small_array"
+import "core:log"
+import "core:thread"
+import "core:sync/chan"
+import "base:runtime"
+import "core:mem"
+import vmem "core:mem/virtual"
 
 v2 :: [2]f32
 v3 :: [3]f32
@@ -72,6 +78,14 @@ UI_Button :: struct {
 MAX_WINDOWS :: 8
 UI_Data :: struct {
   windows: [MAX_WINDOWS]^UI_Window,
+}
+
+Game_Data :: struct {}
+
+Application_Data :: struct {
+  editor: ^UI_Editor_Window,
+  lua_vm: ^Lua_VM_Data,
+  game:   ^Game_Data,
 }
 
 FONT_SIZE :: 16
@@ -312,6 +326,23 @@ make_glyphs :: proc(face: ft.Face) -> map[rune]Glyph {
 }
 
 main :: proc() {
+
+  when ODIN_DEBUG {
+    track: mem.Tracking_Allocator
+    mem.tracking_allocator_init(&track, context.allocator)
+    context.allocator = mem.tracking_allocator(&track)
+
+    defer {
+      if len(track.allocation_map) > 0 {
+        for _, entry in track.allocation_map {
+          fmt.eprintf("%v leaked %v bytes\n", entry.location, entry.size)
+        }
+      }
+
+      mem.tracking_allocator_destroy(&track)
+    }
+  }
+
   sdl.Init({.TIMER, .VIDEO})
   window := sdl.CreateWindow("SDL2", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED, START_WINDOW_WIDTH, START_WINDOW_HEIGHT, {.OPENGL, .RESIZABLE} )
   if window == nil {
@@ -341,13 +372,9 @@ main :: proc() {
   ft.set_pixel_sizes(ft_face, 0, FONT_SIZE)
 
   line_height := cast(f32)(ft_face.size.metrics.height >> 6)
-  // fmt.println("line_height: ", line_height)
-  // fmt.println("face: ", ft_face)
-  // fmt.println("face.size.metrics: ", ft_face.size.metrics)
-
-  fmt.printfln("face: %#v", ft_face)
-  fmt.printfln("face.size: %#v", ft_face.size)
-  fmt.printfln("face.size.metrics: %#v", ft_face.size.metrics)
+  // fmt.printfln("face: %#v", ft_face)
+  // fmt.printfln("face.size: %#v", ft_face.size)
+  // fmt.printfln("face.size.metrics: %#v", ft_face.size.metrics)
   line_height_px := cast(u32)((ft_face.size.metrics.ascender - ft_face.size.metrics.descender) >> 6)
 
   glyphs := make_glyphs(ft_face)
@@ -371,10 +398,6 @@ main :: proc() {
     color = {1, 1, 1},
   }
 
-  // editor_text_buf := make([dynamic]rune)
-  // for c in "hello world" {
-  //   append(&editor_text_buf, c)
-  // }
   max_advance_px := cast(u32)(ft_face.size.metrics.max_advance >> 6)
   editor_window := UI_Editor_Window{
     pos = root_os_window.size / 2 - {800, 600} / 2,
@@ -382,11 +405,9 @@ main :: proc() {
     color = {0.6, 0.6, 0.6},
     active_color = {0.7, 0.7, 0.7},
     rd = &ui_rect_rd,
-    // buttons = { b },
     handle = { size = { 800, 25 } },
     editor = &Editor {
       glyphs = glyphs,
-      // text = "hello world",
       cursor_pos = {1, 1},
       lines = make([dynamic]Line),
       face = ft_face,
@@ -404,13 +425,8 @@ main :: proc() {
 
   for c in "hello world" {
     push_char(editor_window.editor, c)
-    // append(&editor_window.editor.lines[0].text, c)
   }
 
-  // windows := [MAX_WINDOWS]UI_Window {
-  //   0 = &editor_window,
-  // }
-  // windows[0] = &editor_window
   acc:f32
   ui_data := UI_Data {
     windows = [MAX_WINDOWS]^UI_Window {
@@ -421,131 +437,80 @@ main :: proc() {
   gstate := Game_State.Editor_Active
   input_data := Input_Data{}
   cmds := Cmd_List{}
-  main_loop: for {
 
+
+  lua_vm_commands_channel, err := chan.create(chan.Chan(VM_Command), context.allocator)
+  assert(err == .None)
+  defer chan.destroy(lua_vm_commands_channel)
+
+  thsafe_logger, logger_err := create_threadsafe_queue_logger()
+  if logger_err {
+    fmt.println("couldn't create threadsafe queue logger")
+    os.exit(1)
+  }
+
+  ctx := runtime.default_context()
+  ctx.logger = thsafe_logger
+  context.logger = thsafe_logger
+  log.debug("hello from main thread")
+  // TODO: load source here
+  lua_src_arena: vmem.Arena
+  lua_src_arena_err := vmem.arena_init_growing(&lua_src_arena)
+  //TODO: handle this error
+  ensure(lua_src_arena_err == nil)
+  lua_vm_data := Lua_VM_Data {
+    commands_chan = lua_vm_commands_channel,
+    source_arena = lua_src_arena,
+  }
+  lua_thread := thread.create_and_start_with_poly_data(&lua_vm_data, start_lua_vm, ctx)
+//   for i in 0..<3 {
+//     chan.send(c, VM_Command.Execute)
+//     log.debug("sleeping")
+//     time.sleep(time.Second * 1)
+//   }
+//
+  log_chan := cast(^chan.Chan(string, .Both))thsafe_logger.data
+  game_data := Game_Data{}
+  app_data := Application_Data {
+    editor = &editor_window,
+    lua_vm = &lua_vm_data,
+    game = &game_data,
+  }
+
+  main_loop: for {
     now = sdl.GetPerformanceCounter()
     elapsed_ticks: u64 = now - last
     dt = cast(f32)(cast(f64)elapsed_ticks / cast(f64)freq) // in seconds
     last = now
 
     event: sdl.Event
-    // events2 := make([dynamic]sdl.Event, 100)
     for sdl.PollEvent(&event) {
       sa.push(&events, event)
     }
 
     cmds, input_data = process_input(sa.slice(&events), gstate, input_data)
-    // fmt.println(input_data)
     // UI 
     if .Global_Pause in cmds {
       break main_loop
     }
     ui_handle_input(ui_data, cmds, input_data)
-    text_editor_handle_input(&editor_window, cmds, input_data)
+    text_editor_handle_input(app_data, cmds, input_data)
 
     sa.clear(&events)
-      // append(&events2, event)
-
-      // #partial switch event.type {
-      // // case .KEYDOWN: 
-      // //   fallthrough
-      // // case .KEYUP:
-      //
-      // case .KEYDOWN:
-      //   #partial switch event.key.keysym.sym {
-      //   case .ESCAPE:
-      //     break main_loop
-      //   case .A..<.Z:
-      //     // fmt.println(event.key.keysym.sym)
-      //     push_char(&editor_window.editor, rune(event.key.keysym.sym))
-      //     // append(&editor_window.text_buf, rune(event.key.keysym.sym))
-      //   case .DOWN:
-      //     fmt.println("down")
-      //     editor_window.editor.cursor_pos.y += 1
-      //   case .UP:
-      //     fmt.println("up")
-      //     editor_window.editor.cursor_pos.y -= 1
-      //   case .RIGHT:
-      //     fmt.println("right")
-      //     editor_window.editor.cursor_pos.x += 1
-      //   case .LEFT:
-      //     fmt.println("left")
-      //     editor_window.editor.cursor_pos.x -= 1
-      //   case .RETURN:
-      //     l := Line {
-      //       text = make([dynamic]rune),
-      //     }
-      //     append(&editor_window.editor.lines, l)
-      //     editor_window.editor.cursor_pos.y += 1
-      //     editor_window.editor.cursor_pos.x = 0
-      //   }
-      //
-      // // case .MOUSEMOTION:
-      // //   m := v2{cast(f32)event.motion.x, cast(f32)event.motion.y}
-      // //   rel := v2{cast(f32)event.motion.xrel, cast(f32)event.motion.yrel}
-      // //   w := &editor_window
-      // //
-      // //   if .DRAGGED in w.state {
-      // //     w.pos += rel
-      // //   }
-      // // case .MOUSEBUTTONDOWN:
-      // //   // fmt.println(event.button.x, event.button.y)
-      // //   click := v2{cast(f32)event.button.x, cast(f32)event.button.y}
-      // //   // w_pos := editor_window.pos
-      // //   // w := editor_window
-      // //
-      // //   w := &editor_window
-      // //   h := editor_window.handle
-      // //   if click.x > w.pos.x && click.x < w.pos.x + w.size.x && click.y > w.pos.y + h.size.y && click.y < w.pos.y + w.size.y {
-      // //       fmt.println("in window by x and y")
-      // //       fmt.println(editor_window.editor.cursor_pos)
-      // //       w.state += { .ACTIVE }
-      // //   } else {
-      // //       w.state -= { .ACTIVE }
-      // //   }
-      // //   if click.x > w.pos.x && click.x < w.pos.x + h.size.x && click.y > w.pos.y && click.y < w.pos.y + h.size.y {
-      // //     fmt.println("we're in handle by x and y")
-      // //     w.state += { .DRAGGED, .CLICKED }
-      // //   }
-      // //
-      // // case .MOUSEBUTTONUP:
-      // //   editor_window.state -= { .DRAGGED, .CLICKED }
-      // //
-      // case .QUIT: 
-      //   break main_loop
-      // case .WINDOWEVENT:
-      //     width: i32
-      //     height: i32
-      //
-      //     sdl.GL_GetDrawableSize(window, &width, &height)
-      //     // game.width = width
-      //     // game.height = height
-      //     projection = glm.mat4Ortho3d(0, cast(f32)width, cast(f32)height, 0, -1, 1)
-      //     // font_projection = glm.mat4Ortho3d(0, cast(f32)width, 0, cast(f32)height, -1, 1)
-      //     gl.Viewport(0, 0, width, height)
-      //     root_os_window = { { cast(f32)width, cast(f32)height } }
-      // }
-    // }
-
-
     gl.ClearColor(1.0, 0.8039, 0.7882, 1.0) // FFCDC9
     gl.Clear(gl.COLOR_BUFFER_BIT)
 
-    // ui_draw_rect({200, 200}, {200, 200}, ui_rect_rd, {1, 1, 1})
-    // button(b)
     threshhold:f32 = 0.8
     draw_editor(editor_window, root_os_window, acc >= threshhold)
-    // render_text(font_rd, ft_face, glyphs, , editor_window.pos.x, editor_window.pos.y + editor_window.handle.size.y, 1, {1, 1, 1})
     if acc >= threshhold * 2 {
       acc = 0
     }
-    // fmt.println(editor_window.state)
     sdl.GL_SwapWindow(window)
-    // fmt.println(projection)
     acc += dt
+
+    for i in 0..<chan.len(log_chan) {
+      msg, _ := chan.recv(chan.as_recv(log_chan^))
+      fmt.println(msg)
+    }
   }
-  fmt.println("hello world")
-  ttt := "123"
-  fmt.println(ttt[:2])
-  fmt.println(ttt[1:])
 }

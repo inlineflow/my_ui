@@ -6,6 +6,8 @@ import "core:strings"
 import "core:math"
 import "core:slice"
 import "core:mem"
+import vmem "core:mem/virtual"
+import "core:sync/chan"
 
 Cmd_Type :: enum {
   Editor_Cursor_Up,
@@ -20,6 +22,7 @@ Cmd_Type :: enum {
   Editor_Backspace,
   Editor_Tab,
   Editor_Print,
+  Editor_Run,
   Game_Move_Up,
   Global_Pause,
   Global_Unpause,
@@ -127,6 +130,10 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
               if .LCTRL  in event.key.keysym.mod || .RCTRL in event.key.keysym.mod {
                 cmd_list += { .Editor_Print }
               }
+            case .R:
+              if .LCTRL  in event.key.keysym.mod || .RCTRL in event.key.keysym.mod {
+                cmd_list += { .Editor_Run }
+              }
           }
         }
 
@@ -153,11 +160,11 @@ process_input :: proc(events: []sdl.Event, state:Game_State_Type, last_frame_inp
           }
 
         case .TEXTINPUT:
-          fmt.println(event.text.text)
+          // fmt.println(event.text.text)
           cs := cstring(raw_data(event.text.text[:]))
           s := strings.clone_from_cstring(cs)
           res.text = s
-          fmt.println(s)
+          // fmt.println(s)
           cmd_list += { .Editor_Text }
       }
     }
@@ -211,7 +218,8 @@ ui_handle_input :: proc(ui: UI_Data, cmds: Cmd_List, input_data: Input_Data) {
 
 }
 
-text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, input: Input_Data) {
+text_editor_handle_input :: proc(app_data: Application_Data, cmds: Cmd_List, input: Input_Data) {
+  editor_win := app_data.editor
   w := editor_win
   editor := w.editor
   h := w.handle
@@ -246,16 +254,10 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
 
   if .Editor_Text in cmds {
     for r in input.text {
-      // fmt.println(r)
       // TODO: detect the cursor position and inject the character at that position
       pos := editor.cursor_pos.x - 1
       push_char(editor_win.editor, r, pos)
-      // pos := editor.cursor_pos.x - 1
-      // current_line_index := w.editor.cursor_pos.y - 1
-      // current_line := &w.editor.lines[current_line_index]
-      // inject_at(current_line.buf, pos, r)
     }
-    // fmt.println(input.text)
   }
 
   switch cmds {
@@ -299,14 +301,14 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
         reserve(&new_line_buf, DEFAULT_COLUMN_LENGTH)
         l := Line {
           buf = new_line_buf,
-          text = string(new_line_buf[:]),
+          // text = string(new_line_buf[:]),
           reserved_starts_at = len(right),
         }
         // append(&w.editor.lines, l)
 
         leftover_len := len(left)
         current_line.reserved_starts_at = leftover_len
-        current_line.text = string(current_line.buf[:current_line.reserved_starts_at])
+        // current_line.text = string(current_line.buf[:current_line.reserved_starts_at])
         resize(&current_line.buf, leftover_len)
         inject_at(&w.editor.lines, current_line_index + 1, l)
         new_pos := [2]i32{0, w.editor.cursor_pos.y + 1 }
@@ -337,8 +339,15 @@ text_editor_handle_input :: proc(editor_win: ^UI_Editor_Window, cmds: Cmd_List, 
         editor.cursor_pos.x -= 1
       }
     case {.Editor_Print}:
-      text := get_editor_text(editor)
+      text := get_editor_text(editor); defer delete(text)
       fmt.println(text)
+    case {.Editor_Run}:
+      vmem.arena_free_all(&app_data.lua_vm.source_arena)
+      alloc := vmem.arena_allocator(&app_data.lua_vm.source_arena)
+      text := get_editor_text(editor, alloc);
+      app_data.lua_vm.source = text
+      fmt.println(text)
+      chan.send(app_data.lua_vm.commands_chan, VM_Command.Execute)
   }
 }
 
