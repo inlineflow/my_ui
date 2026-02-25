@@ -16,12 +16,16 @@ import "core:sync/chan"
 import "base:runtime"
 import "core:mem"
 import vmem "core:mem/virtual"
+import "core:c"
+import "shared:clay"
 
 v2 :: [2]f32
 v3 :: [3]f32
+v4 :: [4]f32
 
 START_WINDOW_WIDTH :: 1280
 START_WINDOW_HEIGHT :: 720
+EDITOR_FONT_ID :: 1
 
 UI_Rect_Render_Data :: struct {
   vao: u32,
@@ -30,13 +34,16 @@ UI_Rect_Render_Data :: struct {
   uniforms: gl.Uniforms,
 }
 
+UI_RECT_RD: UI_Rect_Render_Data = {}
+FONT_RD: UI_Rect_Render_Data = {}
+FT_FACE: ft.Face
 
 UI_Window :: struct {
   pos: v2,
   size: v2,
   rd: ^UI_Rect_Render_Data,
-  color: v3,
-  active_color: v3,
+  color: v4,
+  active_color: v4,
   state: bit_set[UI_Element_State],
   handle: struct {
     size: v2,
@@ -72,7 +79,7 @@ UI_Button :: struct {
   size: v2,
   state: bit_set[UI_Element_State],
   rd: ^UI_Rect_Render_Data,
-  color: v3,
+  color: v4,
 }
 
 MAX_WINDOWS :: 8
@@ -175,7 +182,7 @@ projection := glm.mat4Ortho3d(0, START_WINDOW_WIDTH, START_WINDOW_HEIGHT, 0, -1,
 
 root_os_window := OS_Window{{ START_WINDOW_WIDTH, START_WINDOW_HEIGHT }}
 
-ui_draw_rect :: proc(pos, size: v2, rd: UI_Rect_Render_Data, color: v3) {
+ui_draw_rect :: proc(pos, size: v2, rd: UI_Rect_Render_Data, color: [4]f32) {
   gl.UseProgram(rd.shader_id)
   color := color
   translate := glm.mat4Translate(v3{pos.x, pos.y, 1.0})
@@ -275,7 +282,7 @@ draw_editor :: proc(e: UI_Editor_Window, os_window: OS_Window, draw_cursor: bool
   cursor_size := v2{2, 20}
   if .ACTIVE in e.state && draw_cursor {
     ui_draw_rect({e.pos.x + cast(f32)(e.editor.cursor_pos.x - 1) * cast(f32)e.editor.max_advance_px,
-                  e.pos.y + e.handle.size.y + cast(f32)(cast(i32)e.editor.line_height_px * (e.editor.cursor_pos.y - 1))}, cursor_size, e.rd^, {1, 1, 1})
+                  e.pos.y + e.handle.size.y + cast(f32)(cast(i32)e.editor.line_height_px * (e.editor.cursor_pos.y - 1))}, cursor_size, e.rd^, {1, 1, 1, 1})
   }
 
   gl.Scissor(0, 0, cast(i32)os_window.size.x, cast(i32)os_window.size.y)
@@ -368,24 +375,26 @@ main :: proc() {
   ft_err = ft.new_face(ftlib, "fonts/FiraMonoNerdFontMono-Regular.otf", 0, &ft_face)
   assert(ft_err == .Ok)
 
+  FT_FACE = ft_face
 
   ft.set_pixel_sizes(ft_face, 0, FONT_SIZE)
 
   line_height := cast(f32)(ft_face.size.metrics.height >> 6)
-  // fmt.printfln("face: %#v", ft_face)
-  // fmt.printfln("face.size: %#v", ft_face.size)
-  // fmt.printfln("face.size.metrics: %#v", ft_face.size.metrics)
+  fmt.printfln("face: %#v", ft_face)
+  fmt.printfln("face.size: %#v", ft_face.size)
+  fmt.printfln("face.size.metrics: %#v", ft_face.size.metrics)
   line_height_px := cast(u32)((ft_face.size.metrics.ascender - ft_face.size.metrics.descender) >> 6)
 
   glyphs := make_glyphs(ft_face)
   font_rd, font_rd_ok := setup_font_quad("shaders/font.vert", "shaders/font.frag")
   assert(font_rd_ok)
   // fmt.println(ft_face)
+  FONT_RD = font_rd
 
   ui_rect_rd, ui_rect_rd_ok := ui_setup_rect_rd("shaders/default.vert", "shaders/default.frag")
   assert(ui_rect_rd_ok)
 
-
+  UI_RECT_RD = ui_rect_rd
   now:u64 = 0
   last: u64 = sdl.GetPerformanceCounter()
   dt: f32 = 0
@@ -395,15 +404,15 @@ main :: proc() {
     pos = {0, 0},
     size = {400, 200},
     rd = &ui_rect_rd,
-    color = {1, 1, 1},
+    color = {1, 1, 1, 1},
   }
 
   max_advance_px := cast(u32)(ft_face.size.metrics.max_advance >> 6)
   editor_window := UI_Editor_Window{
     pos = root_os_window.size / 2 - {800, 600} / 2,
     size = {800, 600},
-    color = {0.6, 0.6, 0.6},
-    active_color = {0.7, 0.7, 0.7},
+    color = {0.6, 0.6, 0.6, 1},
+    active_color = {0.7, 0.7, 0.7, 1},
     rd = &ui_rect_rd,
     handle = { size = { 800, 25 } },
     editor = &Editor {
@@ -422,8 +431,8 @@ main :: proc() {
     // size = {800, 600},
     pos = {0, 0},
     size = {200, 200},
-    color = {0.6, 0.6, 0.6},
-    active_color = {0.7, 0.7, 0.7},
+    color = {0.6, 0.6, 0.6, 1},
+    active_color = {0.7, 0.7, 0.7, 1},
     rd = &ui_rect_rd,
     handle = { size = { 200, 25 } },
   }
@@ -507,6 +516,104 @@ main :: proc() {
     }
   }
 
+  COLOR_LIGHT :: clay.Color{244, 235, 230, 255}
+  create_layout :: proc(w: UI_Editor_Window) -> clay.ClayArray(clay.RenderCommand) {
+
+    clay.BeginLayout()
+    if clay.UI(clay.ID("EditorContainer"))({
+      layout = {
+        sizing = { clay.SizingFixed(w.size.x), clay.SizingFixed(w.size.y) },
+        layoutDirection = .TopToBottom,
+      },
+      floating = {
+        offset = w.pos,
+        attachTo = .Root,
+        pointerCaptureMode =  .Capture ,
+        clipTo = .AttachedParent ,
+      },
+      backgroundColor = {127, 127, 127, 255},
+    }) {
+      if clay.UI(clay.ID("EditorHeader"))({
+          layout = {
+            sizing = { clay.SizingGrow(), clay.SizingFixed(25) },
+          },
+          backgroundColor = clay.Color{15, 15, 15, 255},
+        }) {}
+
+      if clay.UI(clay.ID("EditorBuffer"))({
+        layout = {
+          sizing = { clay.SizingGrow(), clay.SizingGrow() },
+          layoutDirection = .TopToBottom,}
+        }) {
+        for line in w.editor.lines {
+          clay.TextDynamic(string(line.buf[:line.reserved_starts_at]), 
+            &{
+              textColor = COLOR_LIGHT,
+              fontId = EDITOR_FONT_ID,
+              // fontSize = 0, // TODO: figure out the proper value
+              letterSpacing = 1,
+              wrapMode = .None
+            })
+        }
+      }
+    }
+
+    return clay.EndLayout()
+  }
+
+  error_handler :: proc "c" (error_data: clay.ErrorData) {
+    context = runtime.default_context()
+    fmt.println(error_data)
+  }
+
+  min_memory_size: c.size_t = cast(c.size_t)clay.MinMemorySize()
+  memory := make([^]u8, min_memory_size)
+  arena: clay.Arena = clay.CreateArenaWithCapacityAndMemory(min_memory_size, memory)
+  clay.Initialize(arena, {START_WINDOW_WIDTH, START_WINDOW_HEIGHT}, { handler = error_handler } )
+  measure_text :: proc "c" (
+      text: clay.StringSlice,
+      config: ^clay.TextElementConfig,
+      userData: rawptr,
+  ) -> clay.Dimensions {
+    ft_face := cast(ft.Face)userData
+    font_width_px := ft_face.size.metrics.max_advance >> 6
+    // line_height := cast(f32)(ft_face.size.metrics.height >> 6)
+    line_height_px := cast(u32)((ft_face.size.metrics.ascender - ft_face.size.metrics.descender) >> 6)
+    return {
+      width = f32(text.length * i32(font_width_px)),
+      height = f32(line_height_px)
+    }
+  }
+
+  clay.SetMeasureTextFunction(measure_text, &ft_face)
+  // layout := create_layout()
+  // fmt.println(layout)
+
+  clay_render :: proc(render_commands: ^clay.ClayArray(clay.RenderCommand), glyphs: map[rune]Glyph, allocator := context.temp_allocator) {
+    for i in 0..<render_commands.length {
+      render_command := clay.RenderCommandArray_Get(render_commands, i)
+      bounds := render_command.boundingBox
+
+      #partial switch render_command.commandType {
+        case .None:
+        case .Rectangle:
+          config := render_command.renderData.rectangle
+          // fmt.println(config)
+          // fmt.println(config.backgroundColor)
+          if config.cornerRadius.topLeft > 0 {
+
+          } else {
+            ui_draw_rect({bounds.x, bounds.y}, {bounds.width, bounds.height}, UI_RECT_RD, config.backgroundColor / 255)
+          }
+        case .Text:
+          config := render_command.renderData.text
+          text := string(config.stringContents.chars[:config.stringContents.length])
+          render_text(FONT_RD, FT_FACE, glyphs, text, bounds.x, bounds.y, 1, {255, 255, 255})
+
+      }
+    }
+  }
+
   main_loop: for {
     now = sdl.GetPerformanceCounter()
     elapsed_ticks: u64 = now - last
@@ -523,19 +630,22 @@ main :: proc() {
     if .Global_Pause in cmds {
       break main_loop
     }
-    ui_handle_input(ui_data, cmds, input_data)
-    text_editor_handle_input(app_data, cmds, input_data)
+    // ui_handle_input(ui_data, cmds, input_data)
+    // text_editor_handle_input(app_data, cmds, input_data)
 
     sa.clear(&events)
     gl.ClearColor(1.0, 0.8039, 0.7882, 1.0) // FFCDC9
     gl.Clear(gl.COLOR_BUFFER_BIT)
 
     threshhold:f32 = 0.8
-    draw_editor(editor_window, root_os_window, acc >= threshhold)
+    // draw_editor(editor_window, root_os_window, acc >= threshhold)
     if acc >= threshhold * 2 {
       acc = 0
     }
-    draw_window(console_window)
+
+    layout := create_layout(editor_window)
+    clay_render(&layout, editor_window.editor.glyphs)
+    // draw_window(console_window)
     // draw_console(console_window, root_os_window)
     sdl.GL_SwapWindow(window)
     acc += dt
